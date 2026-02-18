@@ -1,25 +1,24 @@
 {
   "gateway": {
     "mode": "local",
-    "port": 18799,
+    "port": 18800,
     "auth": {
-      "token": "${MANAGER_GATEWAY_KEY}"
+      "token": "${WORKER_GATEWAY_AUTH_TOKEN}"
     }
   },
 
   "channels": {
     "matrix": {
       "enabled": true,
-      "homeserver": "http://127.0.0.1:6167",
-      "accessToken": "${MANAGER_MATRIX_TOKEN}",
+      "homeserver": "${HICLAW_MATRIX_SERVER}",
+      "accessToken": "${WORKER_MATRIX_TOKEN}",
       "dm": {
         "policy": "allowlist",
-        "allowFrom": [
-          "@${HICLAW_ADMIN_USER}:${HICLAW_MATRIX_DOMAIN}"
-        ]
+        "allowFrom": []
       },
       "groupPolicy": "allowlist",
       "groupAllowFrom": [
+        "@manager:${HICLAW_MATRIX_DOMAIN}",
         "@${HICLAW_ADMIN_USER}:${HICLAW_MATRIX_DOMAIN}"
       ],
       "groups": {
@@ -32,8 +31,8 @@
     "mode": "merge",
     "providers": {
       "hiclaw-gateway": {
-        "baseUrl": "http://${HICLAW_AI_GATEWAY_DOMAIN}:8080/v1",
-        "apiKey": "${MANAGER_GATEWAY_KEY}",
+        "baseUrl": "${HICLAW_AI_GATEWAY}/v1",
+        "apiKey": "${WORKER_GATEWAY_KEY}",
         "api": "openai-completions",
         "models": [
           {
@@ -50,17 +49,13 @@
 
   "agents": {
     "defaults": {
-      "workspace": "~/hiclaw-fs/agents/manager",
+      "workspace": "/root/hiclaw-fs/agents/${WORKER_NAME}",
       "model": {
         "primary": "hiclaw-gateway/${HICLAW_DEFAULT_MODEL}"
       },
-      "maxConcurrent": 4,
+      "maxConcurrent": 2,
       "subagents": {
-        "maxConcurrent": 8
-      },
-      "heartbeat": {
-        "every": "15m",
-        "prompt": "Read HEARTBEAT.md and follow the checklist. Scan ~/hiclaw-fs/shared/tasks/*/meta.json to find tasks with status=assigned. For each, read assigned_to and room_id, then ask the Worker for progress in their Room (the human admin can see the inquiry). If a Worker confirms completion, update meta.json to status=completed with completed_at. Check credential expiration. Assess capacity vs pending tasks. Reply HEARTBEAT_OK if nothing needs attention."
+        "maxConcurrent": 4
       }
     }
   },

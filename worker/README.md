@@ -25,9 +25,7 @@ Workers are created by the Manager Agent. The Manager provides the installation 
 ```bash
 ../install/hiclaw-install.sh worker \
   --name alice \
-  --matrix-server http://matrix-local.hiclaw.io:8080 \
-  --gateway http://llm-local.hiclaw.io:8080 \
-  --fs http://fs-local.hiclaw.io:8080 \
+  --fs http://<MANAGER_IP>:9000 \
   --fs-key <ACCESS_KEY> \
   --fs-secret <SECRET_KEY>
 ```
@@ -38,11 +36,15 @@ Workers are created by the Manager Agent. The Manager provides the installation 
 worker/
 ├── Dockerfile
 ├── scripts/
-│   └── worker-entrypoint.sh    # Startup: sync config, configure mcporter, launch OpenClaw
-└── configs/
-    ├── worker-openclaw.json.tmpl   # OpenClaw config template
+│   └── worker-entrypoint.sh        # Startup: sync config, configure mcporter, launch OpenClaw
+└── agent/
     └── skills/
-        └── github-operations/SKILL.md  # GitHub MCP operations skill
+        ├── file-sync/
+        │   ├── SKILL.md             # File sync skill (config, credentials, collaboration)
+        │   └── scripts/
+        │       └── hiclaw-sync.sh   # Pull files from centralized storage
+        └── github-operations/
+            └── SKILL.md             # GitHub MCP operations skill
 ```
 
 ## Environment Variables

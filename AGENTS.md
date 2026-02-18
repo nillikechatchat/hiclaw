@@ -38,28 +38,29 @@ hiclaw/
 ### To modify the Manager container
 - [manager/Dockerfile](manager/Dockerfile) -- multi-stage build definition
 - [manager/supervisord.conf](manager/supervisord.conf) -- process orchestration
-- [manager/scripts/](manager/scripts/) -- startup scripts for each component
-- [manager/configs/](manager/configs/) -- configuration templates and initial storage structure
+- [manager/scripts/init/](manager/scripts/init/) -- container startup scripts (supervisord)
+- [manager/scripts/lib/](manager/scripts/lib/) -- shared libraries (base.sh, container-api.sh)
+- [manager/configs/](manager/configs/) -- init-time configuration templates
 
 ### To modify the Worker container
 - [worker/Dockerfile](worker/Dockerfile) -- build definition (Node.js 22 from build stage)
 - [worker/scripts/worker-entrypoint.sh](worker/scripts/worker-entrypoint.sh) -- startup logic
 
 ### To manage Worker containers via socket
-- [manager/scripts/container-api.sh](manager/scripts/container-api.sh) -- Docker/Podman REST API helpers for direct Worker creation
+- [manager/scripts/lib/container-api.sh](manager/scripts/lib/container-api.sh) -- Docker/Podman REST API helpers for direct Worker creation
 
 ### To modify Agent behavior
-- [manager/configs/storage-init/agents/manager/SOUL.md](manager/configs/storage-init/agents/manager/SOUL.md) -- Manager personality and rules
-- [manager/configs/storage-init/agents/manager/HEARTBEAT.md](manager/configs/storage-init/agents/manager/HEARTBEAT.md) -- periodic check routine
-- [manager/configs/storage-init/agents/manager/skills/](manager/configs/storage-init/agents/manager/skills/) -- Manager's 4 core skills
-- [worker/configs/skills/github-operations/SKILL.md](worker/configs/skills/github-operations/SKILL.md) -- Worker GitHub skill
+- [manager/agent/SOUL.md](manager/agent/SOUL.md) -- Manager personality and rules
+- [manager/agent/HEARTBEAT.md](manager/agent/HEARTBEAT.md) -- periodic check routine
+- [manager/agent/skills/](manager/agent/skills/) -- Manager's 4 core skills (each with SKILL.md, scripts/, references/)
+- [worker/agent/skills/github-operations/SKILL.md](worker/agent/skills/github-operations/SKILL.md) -- Worker GitHub skill
 
 ### To modify CI/CD
 - [.github/workflows/](/.github/workflows/) -- GitHub Actions workflows
 - [tests/](tests/) -- integration test suite
 
 ### To modify Higress routing and initialization
-- [manager/scripts/setup-higress.sh](manager/scripts/setup-higress.sh) -- route, consumer, MCP server setup
+- [manager/scripts/init/setup-higress.sh](manager/scripts/init/setup-higress.sh) -- route, consumer, MCP server setup
 - [design/higress-console-api.yaml](design/higress-console-api.yaml) -- Higress Console API spec (OpenAPI 3.0)
 
 ## Technology Stack
@@ -82,7 +83,7 @@ hiclaw/
 
 ## Environment Variables
 
-See [manager/scripts/start-manager-agent.sh](manager/scripts/start-manager-agent.sh) for the full list of `HICLAW_*` environment variables used by the Manager container.
+See [manager/scripts/init/start-manager-agent.sh](manager/scripts/init/start-manager-agent.sh) for the full list of `HICLAW_*` environment variables used by the Manager container.
 
 ## Verified Technical Details
 

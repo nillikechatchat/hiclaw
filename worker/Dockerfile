@@ -66,17 +66,18 @@ COPY --from=openclaw-build /usr/local/bin/mcporter /usr/local/bin/mcporter
 
 # Ensure openclaw binary is on PATH and config is found
 ENV PATH="/opt/openclaw/packages/clawdbot/node_modules/.bin:${PATH}"
-ENV OPENCLAW_CONFIG_PATH="/root/workspace/openclaw.json"
+ENV OPENCLAW_CONFIG_PATH="/root/.openclaw/openclaw.json"
 
-# Worker entrypoint and configs
+# Worker entrypoint, agent skills, and sync scripts
 COPY scripts/ /opt/hiclaw/scripts/
-COPY configs/ /opt/hiclaw/configs/
+COPY agent/ /opt/hiclaw/agent/
 RUN chmod +x /opt/hiclaw/scripts/*.sh && \
-    ln -s /opt/hiclaw/scripts/hiclaw-sync.sh /usr/local/bin/hiclaw-sync
+    find /opt/hiclaw/agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true && \
+    ln -s /opt/hiclaw/agent/skills/file-sync/scripts/hiclaw-sync.sh /usr/local/bin/hiclaw-sync
 
-# Worker workspace
-RUN mkdir -p /root/workspace
+# hiclaw-fs root (mirrors Manager's ~/hiclaw-fs/ layout)
+RUN mkdir -p /root/hiclaw-fs /root/.openclaw
 
-WORKDIR /root/workspace
+WORKDIR /root/hiclaw-fs
 
 ENTRYPOINT ["/opt/hiclaw/scripts/worker-entrypoint.sh"]

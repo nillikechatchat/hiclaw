@@ -33,15 +33,31 @@ Use the installation script instead of running directly:
 manager/
 ├── Dockerfile              # Multi-stage build
 ├── supervisord.conf        # Process orchestration (priority-ordered)
-├── scripts/                # Startup scripts (one per component)
-│   ├── base.sh             # Shared utilities
-│   ├── start-*.sh          # Component startup scripts
-│   └── setup-higress.sh    # Higress route/consumer/MCP init
+├── scripts/
+│   ├── init/               # Container startup scripts (supervisord)
+│   │   ├── start-*.sh      # Component startup scripts
+│   │   └── setup-higress.sh # Higress route/consumer/MCP init
+│   └── lib/                # Shared libraries
+│       ├── base.sh         # Shared utilities (waitForService, generateKey, log)
+│       └── container-api.sh # Docker/Podman REST API helpers
+├── agent/                  # Manager agent definition (synced to MinIO)
+│   ├── AGENTS.md           # Agent instructions
+│   ├── SOUL.md             # Manager personality and rules
+│   ├── HEARTBEAT.md        # Periodic check routine
+│   └── skills/             # Each skill is self-contained
+│       ├── worker-management/
+│       │   ├── SKILL.md
+│       │   ├── scripts/    # create-worker.sh, generate-worker-config.sh
+│       │   └── references/ # worker-openclaw.json.tmpl
+│       ├── mcp-server-management/
+│       │   ├── SKILL.md
+│       │   └── references/ # mcp-github.yaml
+│       ├── higress-gateway-management/
+│       │   └── SKILL.md
+│       └── matrix-server-management/
+│           └── SKILL.md
 ├── configs/
-│   ├── manager-openclaw.json.tmpl  # OpenClaw config template
-│   ├── mcp-github.yaml    # GitHub MCP Server config
-│   └── storage-init/      # Initial MinIO directory structure
-│       └── agents/manager/ # Manager SOUL.md, HEARTBEAT.md, Skills
+│   └── manager-openclaw.json.tmpl  # Manager OpenClaw config template
 └── tests/
     └── smoke-test.sh       # Post-startup health check
 ```

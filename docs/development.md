@@ -188,26 +188,26 @@ make test TEST_FILTER="08 09 10"
 ### Modifying Agent Behavior
 
 Agent behavior is defined by markdown files, not code:
-- **Manager SOUL**: `manager/configs/storage-init/agents/manager/SOUL.md`
-- **Manager Heartbeat**: `manager/configs/storage-init/agents/manager/HEARTBEAT.md`
-- **Skills**: `manager/configs/storage-init/agents/manager/skills/*/SKILL.md`
+- **Manager SOUL**: `manager/agent/SOUL.md`
+- **Manager Heartbeat**: `manager/agent/HEARTBEAT.md`
+- **Skills**: `manager/agent/skills/*/SKILL.md`
 
 ### Modifying Startup Sequence
 
-Each component has its own startup script in `manager/scripts/`:
+Each component has its own startup script in `manager/scripts/init/`:
 - Modify the relevant `start-*.sh` script
 - Rebuild the Manager image
 - Run tests to verify
 
 ### Modifying Higress Configuration
 
-Route, consumer, and MCP server initialization is in `manager/scripts/setup-higress.sh`. This runs once during Manager startup.
+Route, consumer, and MCP server initialization is in `manager/scripts/init/setup-higress.sh`. This runs once during Manager startup.
 
 ### Adding a New MCP Server
 
 1. Add the server configuration to `setup-higress.sh`
 2. Create a Worker skill SKILL.md documenting available tools
-3. Update `worker/configs/skills/` with the new skill
+3. Update `worker/agent/skills/` with the new skill
 4. Add test coverage in `tests/`
 
 ## CI/CD
@@ -346,7 +346,7 @@ The current Higress Console API does not support creating a `qwen` type provider
 }
 ```
 
-This is handled automatically in `manager/scripts/setup-higress.sh`.
+This is handled automatically in `manager/scripts/init/setup-higress.sh`.
 
 ### OpenClaw Skills Format
 

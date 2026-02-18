@@ -90,10 +90,12 @@ ENV OPENCLAW_CONFIG_PATH="/root/hiclaw-fs/agents/manager/openclaw.json"
 # Our supervisord.conf replaces the Higress one; our scripts handle all components
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY scripts/ /opt/hiclaw/scripts/
+COPY agent/ /opt/hiclaw/agent/
 COPY configs/ /opt/hiclaw/configs/
 
 # Make scripts executable
-RUN chmod +x /opt/hiclaw/scripts/*.sh
+RUN chmod +x /opt/hiclaw/scripts/init/*.sh /opt/hiclaw/scripts/lib/*.sh && \
+    find /opt/hiclaw/agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
 
 # ---- Ports ----
 # 8080: Higress Gateway (unified entry point)

@@ -62,7 +62,7 @@ docker logs hiclaw-worker-alice
 docker exec hiclaw-worker-alice curl -sf http://matrix-local.hiclaw.io:8080/_matrix/client/versions
 
 # Check Worker's openclaw.json for correct Matrix config
-docker exec hiclaw-worker-alice cat /root/workspace/openclaw.json | jq '.channels.matrix'
+docker exec hiclaw-worker-alice cat /root/hiclaw-fs/agents/alice/openclaw.json | jq '.channels.matrix'
 ```
 
 ### Worker can't access LLM
@@ -70,7 +70,7 @@ docker exec hiclaw-worker-alice cat /root/workspace/openclaw.json | jq '.channel
 ```bash
 # Test AI Gateway access with Worker's key
 docker exec hiclaw-worker-alice curl -sf \
-  -H "Authorization: Bearer $(jq -r '.models.providers."hiclaw-gateway".apiKey' /root/workspace/openclaw.json)" \
+  -H "Authorization: Bearer $(jq -r '.models.providers."hiclaw-gateway".apiKey' /root/hiclaw-fs/agents/alice/openclaw.json)" \
   http://llm-local.hiclaw.io:8080/v1/models
 
 # If 401: Worker's consumer key may have been rotated. Ask Manager to update.
