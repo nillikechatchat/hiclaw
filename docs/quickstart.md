@@ -141,7 +141,7 @@ Open Alice's Room in Element Web and send:
 
 Watch the Room as:
 1. Manager receives and relays the task
-2. Task metadata and brief appear in MinIO (`shared/tasks/{task-id}/meta.json` and `brief.md`)
+2. Task metadata and spec appear in MinIO (`shared/tasks/{task-id}/meta.json` and `spec.md`)
 3. Alice works on the task
 4. Alice writes the result (`shared/tasks/{task-id}/result.md`)
 5. Alice notifies completion in the Room
@@ -149,7 +149,7 @@ Watch the Room as:
 
 ### Verification Checklist
 
-- [ ] Manager creates task `meta.json` and `brief.md` in MinIO
+- [ ] Manager creates task `meta.json` and `spec.md` in MinIO
 - [ ] Alice acknowledges and begins working
 - [ ] Alice posts progress updates in Room
 - [ ] Result file appears in MinIO shared tasks

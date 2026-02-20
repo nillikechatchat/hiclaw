@@ -64,12 +64,13 @@ Skills provide your tools. When you need one, check its `SKILL.md`. Keep local n
 When assigning tasks to Workers:
 
 1. Generate unique task ID: `task-YYYYMMDD-HHMMSS`
-2. Create task directory and write metadata + brief:
+2. Create task directory and write metadata + spec:
    ```bash
    mkdir -p ~/hiclaw-fs/shared/tasks/{task-id}
    cat > ~/hiclaw-fs/shared/tasks/{task-id}/meta.json << 'EOF'
    {
      "task_id": "task-YYYYMMDD-HHMMSS",
+     "type": "finite",
      "assigned_to": "<worker-name>",
      "room_id": "<room-id>",
      "status": "assigned",
@@ -77,25 +78,119 @@ When assigning tasks to Workers:
      "completed_at": null
    }
    EOF
-   cat > ~/hiclaw-fs/shared/tasks/{task-id}/brief.md << 'EOF'
-   ...task description...
+   cat > ~/hiclaw-fs/shared/tasks/{task-id}/spec.md << 'EOF'
+   ...complete task spec (requirements, acceptance criteria, context, examples)...
    EOF
    ```
-3. Notify Worker in their Room with task ID and file path
-4. Worker creates `plan.md` in the task directory (execution plan), works, stores all intermediate artifacts there, then writes `result.md`
-5. Worker notifies completion via @mention in Room
-6. Update `meta.json`: set `"status": "completed"` and fill in `completed_at`
-7. Log outcome to `memory/YYYY-MM-DD.md`
+3. Notify Worker in their Room with a brief summary and spec file path:
+   ```
+   @{worker}:{domain} 你有一个新任务 [{task-id}]：{task title}
+
+   {2-3 句摘要：任务目的和关键交付物}
+
+   完整规格：~/hiclaw-fs/shared/tasks/{task-id}/spec.md
+   完成后请 @mention 我汇报。
+   ```
+4. Add task to state.json `active_tasks` (see State File section below)
+5. Worker creates `plan.md` in the task directory (execution plan), works, stores all intermediate artifacts there, then writes `result.md`
+6. Worker notifies completion via @mention in Room
+7. Update `meta.json`: set `"status": "completed"` and fill in `completed_at`
+8. Remove task from state.json `active_tasks` and sync to MinIO
+9. Log outcome to `memory/YYYY-MM-DD.md`
 
 **Task directory contents** (standard layout Workers must follow):
 ```
 shared/tasks/{task-id}/
 ├── meta.json     # Manager-maintained metadata
-├── brief.md      # Manager-written task description
+├── spec.md       # Manager-written complete task spec
+├── base/         # Manager-maintained reference files (codebase, docs, etc.)
 ├── plan.md       # Worker-written execution plan (created before starting)
 ├── result.md     # Worker-written final result
 └── *             # Any intermediate artifacts (code, notes, tool outputs, etc.)
 ```
+
+The `base/` directory is maintained by the Manager. You may place reference files here (codebase snapshots, documentation, data files) at any time after task creation using `mc mirror` or `mc cp`. Workers must not overwrite this directory when pushing their work.
+
+### Infinite Task Workflow
+
+For recurring/scheduled tasks (e.g., daily news collection):
+
+1. Create task directory and write metadata + spec:
+   ```bash
+   mkdir -p ~/hiclaw-fs/shared/tasks/{task-id}
+   cat > ~/hiclaw-fs/shared/tasks/{task-id}/meta.json << 'EOF'
+   {
+     "task_id": "task-YYYYMMDD-HHMMSS",
+     "type": "infinite",
+     "assigned_to": "<worker-name>",
+     "room_id": "<room-id>",
+     "status": "active",
+     "schedule": "0 9 * * *",
+     "timezone": "Asia/Shanghai",
+     "assigned_at": "<ISO-8601>"
+   }
+   EOF
+   cat > ~/hiclaw-fs/shared/tasks/{task-id}/spec.md << 'EOF'
+   ...complete task spec including execution guidelines for each run...
+   EOF
+   ```
+   - `status` is always `"active"` — never set to `"completed"`
+   - `schedule` is a standard 5-field cron expression
+   - `timezone` is a tz database timezone name
+
+2. Add task to state.json `active_tasks` with scheduling fields (see State File section)
+3. Heartbeat triggers Worker when `now > next_scheduled_at + 30min` and `last_executed_at < next_scheduled_at`
+4. Worker reports back with: `@manager executed: {task-id} — <one-line summary>`
+5. Update state.json: set `last_executed_at`, recalculate and write `next_scheduled_at`
+
+Trigger message format:
+```
+@{worker}:{domain} 执行定时任务 {task-id}：{task-title}。完成后请用 "executed" 关键字汇报。
+```
+
+## State File (state.json)
+
+Path: `~/hiclaw-fs/agents/manager/state.json`
+
+This file is the single source of truth for active tasks. The heartbeat reads it instead of scanning all meta.json files.
+
+### Structure
+
+```json
+{
+  "active_tasks": [
+    {
+      "task_id": "task-20260219-120000",
+      "type": "finite",
+      "assigned_to": "alice",
+      "room_id": "!xxx:matrix-domain"
+    },
+    {
+      "task_id": "task-20260219-130000",
+      "type": "infinite",
+      "assigned_to": "bob",
+      "room_id": "!yyy:matrix-domain",
+      "schedule": "0 9 * * *",
+      "timezone": "Asia/Shanghai",
+      "last_executed_at": null,
+      "next_scheduled_at": "2026-02-20T01:00:00Z"
+    }
+  ],
+  "updated_at": "2026-02-19T15:00:00Z"
+}
+```
+
+### Maintenance Rules
+
+| When | Action |
+|------|--------|
+| Assign a finite task | Add entry to `active_tasks` (type=finite) |
+| Create an infinite task | Add entry to `active_tasks` (type=infinite, with schedule/timezone/next_scheduled_at) |
+| Finite task completed | Remove the task_id from `active_tasks` |
+| Infinite task executed | Update `last_executed_at`, recalculate `next_scheduled_at` |
+| After every write | Update `updated_at`, then `mc cp` to sync to MinIO: `mc cp ~/hiclaw-fs/agents/manager/state.json hiclaw/hiclaw-storage/agents/manager/state.json` |
+
+If `state.json` does not exist yet, create it with `{"active_tasks": [], "updated_at": "<ISO-8601>"}`.
 
 ## Project Management
 
@@ -112,7 +207,10 @@ When the human admin asks to start a project ("启动项目", "start a project",
 Format for task assignment in project room:
 ```
 @{worker}:{domain} 你有一个新任务 [{task-id}]：{task title}
-任务说明：~/hiclaw-fs/shared/tasks/{task-id}/brief.md
+
+{2-3 句摘要：任务目的和关键交付物}
+
+完整规格：~/hiclaw-fs/shared/tasks/{task-id}/spec.md
 完成后请 @mention 我汇报。
 ```
 

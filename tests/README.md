@@ -14,7 +14,7 @@ Test Script                     HiClaw System
     ├── poll Matrix API for reply <─│
     ├── verify reply content        │
     ├── verify Higress Console ────>│ (Consumer created? Route updated?)
-    ├── verify MinIO files ────────>│ (SOUL.md written? task/brief.md?)
+    ├── verify MinIO files ────────>│ (SOUL.md written? task/spec.md?)
     └── PASS / FAIL                 │
 ```
 

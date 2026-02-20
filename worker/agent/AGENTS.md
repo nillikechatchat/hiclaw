@@ -107,20 +107,28 @@ This pulls the latest files from centralized storage. OpenClaw auto-detects conf
 When you receive a task from the Manager:
 
 1. Sync files first: `bash /opt/hiclaw/agent/skills/file-sync/scripts/hiclaw-sync.sh`
-2. Read the task brief at the path provided (usually `~/hiclaw-fs/shared/tasks/{task-id}/brief.md`)
+2. Read the task spec at the path provided (usually `~/hiclaw-fs/shared/tasks/{task-id}/spec.md`)
 3. **Create `plan.md` in the task directory** before starting work (see Task Directory Rules below)
 4. Execute the task using your skills and tools, keeping all intermediate artifacts in the task directory
 5. Write results and push all task files to shared storage:
    ```bash
-   # Push plan.md, result.md and all intermediate artifacts (exclude brief.md, which is Manager-owned)
-   mc mirror ~/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/ --overwrite --exclude "brief.md"
+   # Push plan.md, result.md and all intermediate artifacts (exclude spec.md and base/, which are Manager-owned)
+   mc mirror ~/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/ --overwrite --exclude "spec.md" --exclude "base/"
    ```
 6. **@mention Manager** in the Room (Worker Room or Project Room, wherever the task was assigned) with a completion report
 7. Log key decisions and outcomes to `memory/YYYY-MM-DD.md`
 
+**For infinite (recurring) tasks**: When triggered by the Manager, execute the task and report back with:
+```
+@manager:{domain} executed: {task-id} — <one-line summary of what was done this run>
+```
+Do not write `result.md`. Instead, write a timestamped artifact file (e.g., `run-YYYYMMDD-HHMMSS.md`) for each execution.
+
 **Important**: `~/hiclaw-fs/shared/` is pulled from centralized storage periodically and on-demand. When writing results that others need, always use `mc cp` or `mc mirror` to push explicitly to `hiclaw/hiclaw-storage/shared/...`.
 
 If you're blocked, say so immediately via @mention to Manager — don't wait for the Manager to ask.
+
+**Note on `base/`**: The Manager may place reference files (codebase snapshots, documentation, data) in the `base/` subdirectory at any time. These are read-only for you — never push to `base/`. The `--exclude "base/"` flag in the mc mirror command above protects against accidentally overwriting them.
 
 ## Task Directory Rules
 
@@ -130,9 +138,10 @@ Every task has a dedicated directory: `~/hiclaw-fs/shared/tasks/{task-id}/`
 
 | File | When to write | Purpose |
 |------|---------------|---------|
-| `brief.md` | Written by Manager | Task description and requirements |
+| `spec.md` | Written by Manager | Complete task spec (requirements, acceptance criteria, context, examples) |
+| `base/` | Written/maintained by Manager | Reference files provided by Manager (read-only for Worker) |
 | `plan.md` | Written by you, before starting | Your step-by-step execution plan |
-| `result.md` | Written by you, when done | Final result summary |
+| `result.md` | Written by you, when done | Final result summary (finite tasks only) |
 
 **Intermediate artifacts** — all work products created during the task belong in this directory:
 

@@ -49,7 +49,7 @@
 1. 收到任务时，先分析任务复杂度和所需技能
 2. 查看当前可用 Worker 列表及其状态
 3. 将任务拆解为子任务，分配给合适的 Worker
-4. 在 ~/hiclaw-fs/shared/tasks/{task-id}/ 下写入 meta.json（任务元数据）和 brief.md（任务描述）
+4. 在 ~/hiclaw-fs/shared/tasks/{task-id}/ 下写入 meta.json（任务元数据）和 spec.md（任务规格，含完整需求和上下文）
    - meta.json 记录 assigned_to、room_id、status、时间戳等，是任务状态的唯一事实来源
    - 详见 AGENTS.md 中的 Task Workflow
 5. 在 Worker 的 Room 中 @mention Worker 分配新任务及文件路径（人类管理员可见）

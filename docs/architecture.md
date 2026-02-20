@@ -148,10 +148,11 @@ MinIO bucket: hiclaw-storage/
 │   │   └── mcporter-servers.json
 │   └── bob/             # Worker Bob config
 ├── shared/
-│   ├── tasks/           # Task briefs, metadata, and results
+│   ├── tasks/           # Task specs, metadata, and results
 │   │   └── task-{id}/
 │   │       ├── meta.json    # Task metadata (assigned_to, status, timestamps)
-│   │       ├── brief.md     # Task description (written by Manager)
+│   │       ├── spec.md      # Complete task spec (written by Manager)
+│   │       ├── base/        # Manager-maintained reference files (codebase, docs, etc.)
 │   │       └── result.md    # Task result (written by Worker)
 │   └── knowledge/       # Shared reference materials
 ├── manager/

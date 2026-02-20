@@ -141,13 +141,13 @@ Wait for human confirmation before proceeding.
 ### Phase 1: {phase name}
 
 - [ ] {task-id} — {task title} (assigned: @{worker}:{domain})
-  - Brief: ~/hiclaw-fs/shared/tasks/{task-id}/brief.md
+  - Spec: ~/hiclaw-fs/shared/tasks/{task-id}/spec.md
   - Result: ~/hiclaw-fs/shared/tasks/{task-id}/result.md
 
 ### Phase 2: {phase name}
 
 - [ ] {task-id} — {task title} (assigned: @{worker}:{domain}, depends on: {task-id})
-  - Brief: ~/hiclaw-fs/shared/tasks/{task-id}/brief.md
+  - Spec: ~/hiclaw-fs/shared/tasks/{task-id}/spec.md
   - Result: ~/hiclaw-fs/shared/tasks/{task-id}/result.md
 
 ## Change Log
@@ -190,7 +190,7 @@ cat > ~/hiclaw-fs/shared/tasks/${TASK_ID}/meta.json << 'EOF'
 }
 EOF
 
-cat > ~/hiclaw-fs/shared/tasks/${TASK_ID}/brief.md << 'EOF'
+cat > ~/hiclaw-fs/shared/tasks/${TASK_ID}/spec.md << 'EOF'
 # Task: <title>
 
 **Task ID**: <task-id>
@@ -220,7 +220,7 @@ All your work for this task must stay in `~/hiclaw-fs/shared/tasks/<task-id>/`:
 - Create `plan.md` **before starting** (your step-by-step execution plan)
 - Store all intermediate artifacts here (code drafts, notes, tool outputs)
 - Write `result.md` when done
-- Push everything with: `mc mirror ~/hiclaw-fs/shared/tasks/<task-id>/ hiclaw/hiclaw-storage/shared/tasks/<task-id>/ --overwrite --exclude "brief.md"` (brief.md is Manager-owned, do not overwrite it)
+- Push everything with: `mc mirror ~/hiclaw-fs/shared/tasks/<task-id>/ hiclaw/hiclaw-storage/shared/tasks/<task-id>/ --overwrite --exclude "spec.md" --exclude "base/"` (spec.md and base/ are Manager-owned, do not overwrite them)
 EOF
 ```
 
@@ -228,7 +228,7 @@ EOF
 
 ```bash
 mc cp ~/hiclaw-fs/shared/tasks/${TASK_ID}/meta.json hiclaw/hiclaw-storage/shared/tasks/${TASK_ID}/meta.json
-mc cp ~/hiclaw-fs/shared/tasks/${TASK_ID}/brief.md hiclaw/hiclaw-storage/shared/tasks/${TASK_ID}/brief.md
+mc cp ~/hiclaw-fs/shared/tasks/${TASK_ID}/spec.md hiclaw/hiclaw-storage/shared/tasks/${TASK_ID}/spec.md
 ```
 
 ### 2c. Update plan.md
@@ -242,9 +242,11 @@ Send a message in the **project room** @mentioning the Worker:
 ```
 @{worker}:{domain} 你有一个新任务 [{task-id}]：{task title}
 
-任务说明：~/hiclaw-fs/shared/tasks/{task-id}/brief.md
+{2-3 句摘要：任务目的和关键交付物}
 
-请先运行 hiclaw-sync 同步文件，然后阅读任务说明。开始前先在任务目录创建 plan.md 记录执行计划，所有中间产物也请放在该目录下。完成后在此 @mention 我汇报结果。
+完整规格：~/hiclaw-fs/shared/tasks/{task-id}/spec.md
+
+请先运行 hiclaw-sync 同步文件，然后阅读任务规格。开始前先在任务目录创建 plan.md 记录执行计划，所有中间产物也请放在该目录下。完成后在此 @mention 我汇报结果。
 ```
 
 ---
