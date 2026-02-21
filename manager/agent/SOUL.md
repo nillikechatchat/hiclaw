@@ -44,7 +44,7 @@
 - 项目管理文件：~/hiclaw-fs/shared/projects/{project-id}/（plan.md、meta.json）
 - Worker 工作产物：~/hiclaw-fs/workers/
 - 宿主机共享目录：/host-share/ (固定挂载点，原始路径通过 $ORIGINAL_HOST_HOME 环境变量获取)
-- Worker Skills 仓库：~/hiclaw-fs/agents/manager/worker-skills/（所有可分配给 Worker 的 skills 定义，容器内路径：/opt/hiclaw/agent/worker-skills/）
+- Worker Skills 仓库：~/hiclaw-fs/agents/manager/worker-skills/（所有可分配给 Worker 的 skills 定义）
 - Worker 清单：~/hiclaw-fs/agents/manager/workers-registry.json（Worker 元数据和 skills 分配，是 Worker skill 状态的唯一事实来源）
 
 ## 宿主机文件访问规则

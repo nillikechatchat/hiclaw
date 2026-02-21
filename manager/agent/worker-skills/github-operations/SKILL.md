@@ -1,3 +1,9 @@
+---
+name: github-operations
+description: Perform GitHub operations (repos, branches, files, PRs, issues) via the centralized MCP Server. No GitHub token required — credentials are managed by the Manager.
+assign_when: Worker 的职责涉及软件开发、代码协作或 GitHub 项目管理，例如：开发者、工程师、程序员、代码审查员、DevOps 工程师；或者 Worker 需要操作代码仓库、创建/合并 PR、管理 issue、提交代码、管理分支等。
+---
+
 # GitHub Operations via MCP
 
 ## Overview

@@ -8,14 +8,30 @@
 worker-skills/
 ├── README.md                  # 本文件
 └── <skill-name>/
-    └── SKILL.md               # Skill 的说明和使用方式
+    └── SKILL.md               # Skill 的说明（必须包含 frontmatter，见下）
     └── scripts/               # （可选）Skill 附带的脚本
 ```
 
+## SKILL.md 格式要求
+
+每个 `SKILL.md` **必须**以 YAML frontmatter 开头，包含 `assign_when` 字段：
+
+```yaml
+---
+name: <skill-name>
+description: <一句话说明这个 skill 做什么>
+assign_when: <描述：什么样的 Worker 应该拥有此 skill，Manager 据此自动决定是否分配>
+---
+```
+
+字段说明：
+- `description`：简要说明 skill 的功能，供 Manager 和 human 快速了解
+- `assign_when`：用自然语言描述 Worker 的**角色特征**或**职责范围**，Manager 在创建 Worker 时据此判断是否分配；不要写技术实现细节，只描述"什么样的人需要这个工具"
+
 ## 如何新增自定义 Skill
 
-1. 在此目录下创建新的 `<skill-name>/` 子目录
-2. 编写 `SKILL.md` 说明该 skill 的功能和使用方式
+1. 在 `~/hiclaw-fs/agents/manager/worker-skills/<skill-name>/` 下创建 skill 目录（`~/hiclaw-fs/` 与 MinIO 实时同步，直接写这里即可持久化）
+2. 编写 `SKILL.md`，**开头必须包含 frontmatter**（`name` + `assign_when`），后续正文说明使用方式
 3. 如需脚本，放在 `<skill-name>/scripts/` 下
 4. 使用 `push-worker-skills.sh --worker <name> --add-skill <skill-name>` 分配给 Worker
 

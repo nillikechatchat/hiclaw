@@ -68,6 +68,22 @@ Skills provide your tools. When you need one, check its `SKILL.md`. Keep local n
 - **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
 - **WhatsApp:** No headers — use **bold** or CAPS for emphasis
 
+## Worker Skills Management
+
+Worker skill definitions live in `~/hiclaw-fs/agents/manager/worker-skills/`. When the human admin asks you to convert an MCP capability into a Worker skill, or to add any new Worker skill, the `SKILL.md` **must** start with a YAML frontmatter block:
+
+```yaml
+---
+name: <skill-name>
+description: <one-line summary of what this skill does>
+assign_when: <natural language description: what role/responsibility Worker should have this skill>
+---
+```
+
+**`assign_when` is required** — when creating a Worker, you read this field from every available skill and match it against the Worker's role to decide what to assign. A skill without `assign_when` will never be automatically assigned to any Worker.
+
+For the full procedure, see the "How to Add a New Custom Skill" section in the `worker-management` SKILL.md.
+
 ## Key Environment
 
 - Higress Console: http://127.0.0.1:8001 (Session Cookie auth, cookie at `${HIGRESS_COOKIE_FILE}`)

@@ -23,6 +23,36 @@ cat > ~/hiclaw-fs/agents/<WORKER_NAME>/SOUL.md << 'EOF'
 EOF
 ```
 
+### Step 1.5: Determine skills based on worker role
+
+**This step is mandatory before running the create script.** The available skills grow over time — never rely on memory. Always re-scan the skill definitions and read each one's assignment condition fresh.
+
+1. List all available skills:
+   ```bash
+   ls ~/hiclaw-fs/agents/manager/worker-skills/
+   ```
+
+2. Read the YAML frontmatter at the top of each skill's `SKILL.md` to get its `assign_when` condition:
+   ```bash
+   head -8 ~/hiclaw-fs/agents/manager/worker-skills/<skill-name>/SKILL.md
+   ```
+   Each `SKILL.md` starts with:
+   ```yaml
+   ---
+   name: <skill-name>
+   description: <one-line summary of what this skill does>
+   assign_when: <description of what role/responsibility warrants this skill>
+   ---
+   ```
+
+3. Match each skill's `assign_when` against the Worker's role description and SOUL.md content. If it fits, include the skill.
+
+4. Collect all matched skills. `file-sync` does not need to be specified — the script adds it automatically.
+
+**When in doubt, assign more rather than fewer** — a missing skill blocks the Worker from completing tasks and can only be fixed later, while an extra skill causes no harm.
+
+Pass the matched skills as a comma-separated string to `--skills`, e.g. `file-sync,github-operations`
+
 ### Step 2: Run create-worker script
 
 The script handles everything: Matrix registration, room creation, Higress consumer, AI/MCP authorization, config generation, MinIO sync, skills push, and container startup.
@@ -35,7 +65,7 @@ bash /opt/hiclaw/agent/skills/worker-management/scripts/create-worker.sh --name 
 - `--name` (required): Worker name
 - `--model`: optional, bare model name (e.g. `qwen3.5-plus`). Defaults to `${HICLAW_DEFAULT_MODEL}`
 - `--mcp-servers`: optional, comma-separated MCP server names. Defaults to all existing MCP servers
-- `--skills`: optional, comma-separated skill names (e.g. `file-sync,github-operations`). Defaults to `file-sync`. `file-sync` is always included automatically
+- `--skills`: comma-separated skill names determined in Step 1.5 (e.g. `file-sync,github-operations`). Defaults to `file-sync` if omitted. `file-sync` is always included automatically
 - `--remote`: force output install command instead of starting container locally
 
 **Deployment behavior** (without `--remote`):
@@ -124,7 +154,7 @@ See `higress-gateway-management` SKILL.md for the exact API calls.
 
 ## Manage Worker Skills
 
-Manager centrally manages all Worker skills. The canonical skill definitions live in `~/hiclaw-fs/agents/manager/worker-skills/` (on disk: `/opt/hiclaw/agent/worker-skills/`). Worker skill assignments are tracked in `~/hiclaw-fs/agents/manager/workers-registry.json`.
+Manager centrally manages all Worker skills. The canonical skill definitions live in `~/hiclaw-fs/agents/manager/worker-skills/`. Worker skill assignments are tracked in `~/hiclaw-fs/agents/manager/workers-registry.json`.
 
 ### workers-registry.json
 
@@ -152,13 +182,13 @@ Format:
 ### worker-skills/ Directory Structure
 
 ```
-/opt/hiclaw/agent/worker-skills/
+~/hiclaw-fs/agents/manager/worker-skills/
 ├── README.md
 └── github-operations/
     └── SKILL.md
 ```
 
-To add a new skill, create a new directory here with a `SKILL.md` and optional `scripts/`.
+To add a new skill, create a new subdirectory here with a `SKILL.md` (with `assign_when` frontmatter) and optional `scripts/`.
 
 ### push-worker-skills.sh
 
@@ -183,10 +213,13 @@ After pushing skills, the script notifies the affected Worker(s) via Matrix @men
 
 ### How to Add a New Custom Skill
 
-1. Create the skill directory under `/opt/hiclaw/agent/worker-skills/<skill-name>/`
-2. Write `SKILL.md` describing the skill
-3. Rebuild the Manager image, or manually copy to `~/hiclaw-fs/agents/manager/worker-skills/<skill-name>/` and sync to MinIO
-4. Assign to workers: `push-worker-skills.sh --worker <name> --add-skill <skill-name>`
+1. Create the skill directory under `~/hiclaw-fs/agents/manager/worker-skills/<skill-name>/` and write its files (`SKILL.md` must include `name`, `description`, and `assign_when` frontmatter; place any scripts under `scripts/`). `~/hiclaw-fs/` syncs to MinIO in real time — no extra steps needed for persistence.
+
+2. Assign to Worker：
+   ```bash
+   bash /opt/hiclaw/agent/skills/worker-management/scripts/push-worker-skills.sh \
+     --worker <name> --add-skill <skill-name>
+   ```
 
 ## Important Notes
 
