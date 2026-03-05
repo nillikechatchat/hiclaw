@@ -111,16 +111,9 @@ jobs:
       - name: Archive changelog and reset
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          BRANCH="chore/archive-changelog-${VERSION}"
-          git checkout -b "${BRANCH}"
 
           # Rename current.md → vX.Y.Z.md
-          git mv changelog/current.md "changelog/${VERSION}.md"
-
-          # Create fresh current.md
+          cp changelog/current.md "changelog/${VERSION}.md"
           cat > changelog/current.md << 'EOF'
           # Changelog (Unreleased)
 
@@ -130,16 +123,13 @@ jobs:
 
           EOF
 
-          git add changelog/current.md
-          git commit -m "chore: archive changelog for ${VERSION}"
-          git push origin "${BRANCH}"
-
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/archive-changelog-${{ steps.version.outputs.version }}
           base: main
+          commit-message: "chore: archive changelog for ${{ steps.version.outputs.version }}"
           title: "chore: archive changelog for ${{ steps.version.outputs.version }}"
           body: "Automated PR to archive `changelog/current.md` → `changelog/${{ steps.version.outputs.version }}.md` and reset for next release."
           labels: changelog
