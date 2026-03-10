@@ -880,7 +880,7 @@ prompt() {
             log "$(msg prompt.upgrade_keep "${var_name}" "${display_value}")"
             local new_value=""
             if [ "${is_secret}" = "true" ]; then
-                read -s -p "${prompt_text}: " new_value
+                read -s -e -p "${prompt_text}: " new_value
                 echo
             else
                 read -e -p "${prompt_text}: " new_value
@@ -913,7 +913,7 @@ prompt() {
 
     local value=""
     if [ "${is_secret}" = "true" ]; then
-        read -s -p "${prompt_text}: " value
+        read -s -e -p "${prompt_text}: " value
         echo
     else
         read -e -p "${prompt_text}: " value
@@ -962,7 +962,7 @@ prompt_optional() {
             fi
             local new_value=""
             if [ "${is_secret}" = "true" ]; then
-                read -s -p "${prompt_text}: " new_value
+                read -s -e -p "${prompt_text}: " new_value
                 echo
             else
                 read -e -p "${prompt_text}: " new_value
@@ -984,7 +984,7 @@ prompt_optional() {
 
     local value=""
     if [ "${is_secret}" = "true" ]; then
-        read -s -p "${prompt_text}: " value
+        read -s -e -p "${prompt_text}: " value
         echo
     else
         read -e -p "${prompt_text}: " value
