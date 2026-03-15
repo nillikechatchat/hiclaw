@@ -30,20 +30,20 @@ The output is JSON with a `summary` (idle/busy/stopped/unavailable counts) and a
 | `active_tasks` | List of `{task_id, type, title}` for tasks currently assigned |
 | `container_status` | Raw status: `running`, `stopped`, `not_found`, `remote`, `unknown` |
 
-**Decision flow based on output:**
+**Decision flow based on output (delegation-first — always prefer assigning to a Worker):**
 
-1. **Idle workers exist** → pick the best match by role + skills, present to admin as **Option A**
-2. **Only busy workers** → present workload info, suggest **Option B** (create new Worker) or wait
-3. **No workers at all** → suggest **Option B** (create new Worker) or **Option C** (handle it yourself)
+1. **Idle workers exist** → pick the best match by role + skills, present to admin as **Option A** (strongly recommended)
+2. **Only busy workers** → present workload info, suggest **Option B** (create new Worker) or wait for a Worker to become idle
+3. **No workers at all** → suggest **Option B** (create new Worker). Only fall back to **Option C** if the admin explicitly requests it
 
 Present options to admin:
-- **Option A** — Assign to an idle existing Worker (show name + role + skills + current workload from the script output)
+- **Option A** (preferred) — Assign to an idle existing Worker (show name + role + skills + current workload from the script output)
 - **Option B** — Create a new Worker (suggest name/role/skills/model based on task type; ask about find-skills, see Step 4)
-- **Option C** — Handle it yourself (note: broader system access than Workers; use isolated Worker for untrusted inputs)
+- **Option C** (last resort) — Handle it yourself. Only choose this when the admin explicitly says "do it yourself", or the task falls within your management skills listed in `TOOLS.md` (e.g., worker-management, mcp-server-management, model-switch). Never default to this just because no Worker is available — propose creating one first.
 
 Act on choice: A → ensure container ready then assign; B → create Worker then assign; C → work directly (no task directory needed).
 
-**Skip Step 0 when**: admin explicitly names a Worker, says "do it yourself", or it's a heartbeat-triggered infinite task. In YOLO mode, decide autonomously.
+**Skip Step 0 when**: admin explicitly names a Worker, says "do it yourself", or it's a heartbeat-triggered infinite task. In YOLO mode, autonomously pick the best Worker or create one — still prefer delegation over self-execution.
 
 **Step 4 — Find-Skills (only when creating a new Worker):**
 
