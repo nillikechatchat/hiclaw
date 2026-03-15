@@ -49,13 +49,15 @@ If the gateway test fails (non-200), the script prints an error with details. No
 
 When the human admin requests switching to a model you don't recognize, you MUST:
 
-1. **Ask the admin for the model's context window size** before running the script. Example: "This model is not in the known list. What is its context window size (in tokens)?"
-2. Once the admin provides the context window, run the script with `--context-window`:
+1. **Ask the admin two questions** before running the script:
+   - "This model is not in the known list. What is its context window size (in tokens)?"
+   - "Does this model support reasoning (extended thinking)?"
+2. Run the script with the appropriate flags:
    ```bash
-   bash /opt/hiclaw/agent/skills/model-switch/scripts/update-manager-model.sh <MODEL_ID> --context-window <SIZE>
+   bash /opt/hiclaw/agent/skills/model-switch/scripts/update-manager-model.sh <MODEL_ID> --context-window <SIZE> [--no-reasoning]
    ```
 3. If the admin does not know the context window, use the default (150,000) by omitting `--context-window`.
-4. If the admin wants to disable reasoning, add `--no-reasoning` to the command.
+4. If the model does not support reasoning, add `--no-reasoning`.
 
 ## Pre-configured models (for reference)
 
