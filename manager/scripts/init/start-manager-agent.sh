@@ -314,7 +314,7 @@ if [ -f /root/manager-workspace/openclaw.json ]; then
         | .models.providers["hiclaw-gateway"].models = ($existing + $new)
         # Rebuild model aliases from the full models list
         | (.models.providers["hiclaw-gateway"].models | map({ ("hiclaw-gateway/" + .id): { "alias": .id } }) | add // {}) as $aliases
-        | .agents.defaults.model.models = ((.agents.defaults.model.models // {}) + $aliases)
+        | .agents.defaults.models = ((.agents.defaults.models // {}) + $aliases)
         | .channels.matrix.accessToken = $token | .hooks.token = $key | .models.providers["hiclaw-gateway"].apiKey = $key
         | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)
         | .commands.restart = true
@@ -360,40 +360,31 @@ if [ -f "${REGISTRY_FILE}" ]; then
     KNOWN_MODELS_FILE="/opt/hiclaw/configs/known-models.json"
     if [ -f "${KNOWN_MODELS_FILE}" ]; then
         _KNOWN_MODELS=$(cat "${KNOWN_MODELS_FILE}")
-        _known_count=$(echo "${_KNOWN_MODELS}" | jq 'length')
         for _wname in $(jq -r '.workers | keys[]' "${REGISTRY_FILE}" 2>/dev/null); do
             [ -z "${_wname}" ] && continue
             _minio_path="hiclaw/hiclaw-storage/agents/${_wname}/openclaw.json"
             _tmp_in="/tmp/openclaw-${_wname}-models-upgrade-in.json"
             if mc cp "${_minio_path}" "${_tmp_in}" 2>/dev/null; then
-                _existing_count=$(jq '.models.providers["hiclaw-gateway"].models | length' "${_tmp_in}" 2>/dev/null || echo "0")
-                _has_encryption=$(jq '.channels.matrix | has("encryption")' "${_tmp_in}" 2>/dev/null || echo "false")
-                _needs_upgrade=false
-                if [ "${_existing_count}" -lt "${_known_count}" ]; then
-                    _needs_upgrade=true
-                fi
-                if [ "${_has_encryption}" != "true" ]; then
-                    _needs_upgrade=true
-                fi
-                if [ "${_needs_upgrade}" = "true" ]; then
-                    _tmp_out="/tmp/openclaw-${_wname}-models-upgrade-out.json"
-                    jq --argjson known_models "${_KNOWN_MODELS}" \
-                       --argjson e2ee "${MATRIX_E2EE_ENABLED}" '
-                        .models.providers["hiclaw-gateway"].models as $existing
-                        | ($existing | map(.id)) as $existing_ids
-                        | ($known_models | map(select(.id as $id | $existing_ids | index($id) | not))) as $new
-                        | .models.providers["hiclaw-gateway"].models = ($existing + $new)
-                        | (.models.providers["hiclaw-gateway"].models | map({ ("hiclaw-gateway/" + .id): { "alias": .id } }) | add // {}) as $aliases
-                        | .agents.defaults.model.models = ((.agents.defaults.model.models // {}) + $aliases)
-                        | .channels.matrix.encryption = $e2ee
-                    ' "${_tmp_in}" > "${_tmp_out}" 2>/dev/null
+                _tmp_out="/tmp/openclaw-${_wname}-models-upgrade-out.json"
+                # Idempotent merge: add missing known models, rebuild aliases, set e2ee.
+                # Always runs — jq deduplicates by model id, so re-runs are safe.
+                jq --argjson known_models "${_KNOWN_MODELS}" \
+                   --argjson e2ee "${MATRIX_E2EE_ENABLED}" '
+                    .models.providers["hiclaw-gateway"].models as $existing
+                    | ($existing | map(.id)) as $existing_ids
+                    | ($known_models | map(select(.id as $id | $existing_ids | index($id) | not))) as $new
+                    | .models.providers["hiclaw-gateway"].models = ($existing + $new)
+                    | (.models.providers["hiclaw-gateway"].models | map({ ("hiclaw-gateway/" + .id): { "alias": .id } }) | add // {}) as $aliases
+                    | .agents.defaults.models = ((.agents.defaults.models // {}) + $aliases)
+                    | .channels.matrix.encryption = $e2ee
+                ' "${_tmp_in}" > "${_tmp_out}" 2>/dev/null
+                if ! diff -q "${_tmp_in}" "${_tmp_out}" > /dev/null 2>&1; then
                     if mc cp "${_tmp_out}" "${_minio_path}" 2>/dev/null; then
                         _new_count=$(jq '.models.providers["hiclaw-gateway"].models | length' "${_tmp_out}" 2>/dev/null)
-                        log "Worker ${_wname}: upgraded openclaw.json (models: ${_existing_count} -> ${_new_count}, e2ee: ${MATRIX_E2EE_ENABLED})"
+                        log "Worker ${_wname}: upgraded openclaw.json (models: ${_new_count}, e2ee: ${MATRIX_E2EE_ENABLED})"
                     fi
-                    rm -f "${_tmp_out}"
                 fi
-                rm -f "${_tmp_in}"
+                rm -f "${_tmp_in}" "${_tmp_out}"
             fi
         done
     fi

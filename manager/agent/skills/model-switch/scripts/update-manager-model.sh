@@ -134,7 +134,7 @@ if [ "${MODEL_EXISTS}" -gt 0 ]; then
        --argjson reasoning "${REASONING}" \
        '(.models.providers["hiclaw-gateway"].models[] | select(.id == $model)).reasoning = $reasoning
         | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)
-        | .agents.defaults.model.models["hiclaw-gateway/" + $model] = { "alias": $model }' \
+        | .agents.defaults.models["hiclaw-gateway/" + $model] = { "alias": $model }' \
        "${CONFIG_FILE}" > "${TMP}" && mv "${TMP}" "${CONFIG_FILE}"
 
     log "Done. OpenClaw will hot-reload the config within ~300ms."
@@ -155,7 +155,7 @@ else
            "input": $input
          }]
         | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)
-        | .agents.defaults.model.models["hiclaw-gateway/" + $model] = { "alias": $model }' \
+        | .agents.defaults.models["hiclaw-gateway/" + $model] = { "alias": $model }' \
        "${CONFIG_FILE}" > "${TMP}" && mv "${TMP}" "${CONFIG_FILE}"
 
     log "Done. Model '${MODEL_NAME}' has been added to the models list."
