@@ -316,6 +316,31 @@ def push_local(sync: FileSync, since: float = 0) -> list[str]:
     if not local_dir.exists():
         return pushed
 
+    # ── Inner → Outer sync ──────────────────────────────────────────────
+    # CoPaw Agent reads/writes .copaw/AGENTS.md and .copaw/SOUL.md at
+    # runtime.  These are "inner" copies derived from the "outer" files at
+    # the sync root.  If the Agent modifies them, propagate changes back to
+    # the outer layer so the normal push cycle uploads them to MinIO.
+    _INNER_OUTER_FILES = ("AGENTS.md", "SOUL.md")
+    copaw_dir = local_dir / ".copaw"
+    for name in _INNER_OUTER_FILES:
+        inner = copaw_dir / name
+        outer = local_dir / name
+        if not inner.exists():
+            continue
+        try:
+            inner_mtime = inner.stat().st_mtime
+        except OSError:
+            continue
+        # Only copy if inner is newer than outer (or outer doesn't exist)
+        outer_mtime = outer.stat().st_mtime if outer.exists() else 0
+        if inner_mtime > outer_mtime:
+            inner_content = inner.read_text(errors="replace")
+            outer_content = outer.read_text(errors="replace") if outer.exists() else ""
+            if inner_content != outer_content:
+                outer.write_text(inner_content)
+                logger.debug("Inner→Outer sync: .copaw/%s → %s", name, name)
+
     sync._ensure_alias()
 
     for path in local_dir.rglob("*"):

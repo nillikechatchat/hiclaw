@@ -325,12 +325,22 @@ class Worker:
             return
 
         for skill_name in skill_names:
-            skill_md = self.sync.get_skill_md(skill_name)
-            if not skill_md:
+            src_skill_dir = self.sync.local_dir / "skills" / skill_name
+            dst_skill_dir = active_skills_dir / skill_name
+            if not src_skill_dir.exists():
                 continue
-            skill_dir = active_skills_dir / skill_name
-            skill_dir.mkdir(parents=True, exist_ok=True)
-            (skill_dir / "SKILL.md").write_text(skill_md)
+            dst_skill_dir.mkdir(parents=True, exist_ok=True)
+            # Mirror the full skill directory (SKILL.md + scripts/ + references/)
+            for src_file in src_skill_dir.rglob("*"):
+                if not src_file.is_file():
+                    continue
+                rel = src_file.relative_to(src_skill_dir)
+                dst_file = dst_skill_dir / rel
+                dst_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_file, dst_file)
+                # Restore +x on shell scripts
+                if dst_file.suffix == ".sh":
+                    dst_file.chmod(dst_file.stat().st_mode | 0o111)
             logger.info("Installed MinIO skill: %s", skill_name)
 
         console.print(f"[green]Skills installed: {', '.join(skill_names)}[/green]")
