@@ -1,0 +1,59 @@
+# hiclaw-worker-agent
+
+Lightweight Worker Agent container. Includes:
+
+- **Worker Agent** (OpenClaw): Executes tasks, communicates via Matrix
+- **mc**: MinIO Client for file sync with centralized storage
+- **mcporter**: MCP tool CLI for calling external services (GitHub, etc.)
+
+Workers are **stateless** -- all configuration and memory is stored in the centralized MinIO file system. A Worker can be destroyed and recreated at any time without losing state.
+
+## Build
+
+```bash
+# Via Makefile (recommended)
+make build-worker
+
+# Or directly
+docker build -t hiclaw/worker-agent:latest .
+```
+
+## Run
+
+Workers are created by the Manager Agent. The Manager provides the installation command:
+
+```bash
+../install/hiclaw-install.sh worker \
+  --name alice \
+  --fs http://<MANAGER_IP>:9000 \
+  --fs-key <ACCESS_KEY> \
+  --fs-secret <SECRET_KEY>
+```
+
+## Directory Structure
+
+```
+worker/
+├── Dockerfile
+├── scripts/
+│   └── worker-entrypoint.sh        # Startup: sync config, configure mcporter, launch OpenClaw
+└── agent/
+    └── skills/
+        ├── file-sync/
+        │   ├── SKILL.md             # File sync skill (config, credentials, collaboration)
+        │   └── scripts/
+        │       └── hiclaw-sync.sh   # Pull files from centralized storage
+        └── github-operations/
+            └── SKILL.md             # GitHub MCP operations skill
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `HICLAW_WORKER_NAME` | Yes | Worker name (e.g., `alice`) |
+| `HICLAW_MATRIX_SERVER` | Yes | Matrix Homeserver URL |
+| `HICLAW_AI_GATEWAY` | Yes | AI Gateway URL |
+| `HICLAW_FS_ENDPOINT` | Yes | MinIO/HTTP file system URL |
+| `HICLAW_FS_ACCESS_KEY` | Yes | MinIO access key |
+| `HICLAW_FS_SECRET_KEY` | Yes | MinIO secret key |
