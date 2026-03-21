@@ -378,12 +378,21 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           gh release upload "${VERSION}" metrics-baseline.json \
             --repo "${{ github.repository }}" --clobber
+          echo "✅ Baseline uploaded to release ${VERSION}"
+
+      - name: Upload debug log to release
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
           if [ -f debug-log.zip ]; then
             gh release upload "${VERSION}" debug-log.zip \
               --repo "${{ github.repository }}" --clobber
-            echo "✅ Baseline + debug log uploaded to release ${VERSION}"
+            echo "✅ Debug log uploaded to release ${VERSION}"
           else
-            echo "✅ Baseline uploaded to release ${VERSION} (no debug log)"
+            echo "No debug log to upload"
           fi
 
       - name: Cleanup
