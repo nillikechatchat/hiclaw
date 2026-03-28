@@ -13,9 +13,10 @@ from typing import Any
 
 
 def _port_remap(url: str, is_container: bool) -> str:
-    """Remap container-internal :8080 to host-exposed :18080 when needed."""
+    """Remap container-internal :8080 to host-exposed gateway port when needed."""
     if not is_container and url and ":8080" in url:
-        return url.replace(":8080", ":18080")
+        gateway_port = os.environ.get("HICLAW_PORT_GATEWAY", "18080")
+        return url.replace(":8080", f":{gateway_port}")
     return url
 
 
@@ -199,6 +200,7 @@ def _write_config_json(
         "enabled": matrix_raw.get("enabled", True),
         "homeserver": homeserver,
         "access_token": access_token,
+        "encryption": matrix_raw.get("encryption", False),
         "dm_policy": dm_policy,
         "allow_from": dm_allow_from,
         "group_policy": group_policy,

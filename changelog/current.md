@@ -4,27 +4,21 @@ Record image-affecting changes to `manager/`, `worker/`, `openclaw-base/` here b
 
 ---
 
-- feat(copaw): convert Markdown to HTML in Matrix messages using markdown-it-py (same engine as OpenClaw) with linkify, breaks, strikethrough, and table support
-- feat(manager): add find-worker.sh to consolidate worker availability check (registry + state + lifecycle + SOUL.md) into a single script call
-- fix(manager): lifecycle-worker.sh idle detection now considers infinite tasks — Workers with active infinite tasks are no longer auto-stopped
-- fix(manager): HEARTBEAT.md Steps 5/6 updated to treat infinite tasks as active for idle detection and anomaly checks
-- feat(manager): task-management SKILL.md adds finite vs infinite decision guide for the Agent
-- feat(manager): add resolve-notify-channel.sh to unify admin notification channel resolution (primary-channel → Matrix DM fallback)
-- feat(manager): add manage-primary-channel.sh for validated, atomic primary-channel.json operations (confirm/reset/show)
-- feat(manager): task-management SKILL.md adds admin notification step on finite task completion
-- feat(manager): project-management SKILL.md adds admin notification step on project task completion
-- refactor(manager): HEARTBEAT.md Step 7 and Step 1 now use resolve-notify-channel.sh instead of inline channel resolution
-- refactor(manager): channel-management SKILL.md replaces all manual cat/jq writes with manage-primary-channel.sh calls
-- fix(manager): TOOLS.md channel-management first-contact trigger corrected from "first time" to "channel mismatch", added show command
-- fix(manager): TOOLS.md clarifies copaw runtime vs deployment mode (copaw ≠ remote), adds Deployment column to runtime table
-- feat(manager): TOOLS.md task-management fewshot now includes infinite task trigger scenario
-- fix(manager): manage-state.sh `executed` action no longer errors when infinite task is missing from active_tasks (backward compat with legacy tasks)
-- feat(manager): add delegation-first principle to SOUL.md — Manager prioritizes assigning tasks to Workers over self-execution
-- feat(manager): task-management SKILL.md Step 0 decision flow now explicitly marks Worker delegation as preferred and self-execution as last resort
-- fix(worker): fix `hiclaw-sync: Permission denied` after upgrade — replace symlink with `/bin/sh` wrapper so execution does not depend on `+x` permission bit (MinIO does not preserve Unix permissions); add `chmod +x` in `hiclaw-sync.sh` and entrypoint fallback sync to restore script permissions after pull
-- fix(install): upgrade now pulls both openclaw and copaw worker images when the other runtime's image exists locally, ensuring all worker containers get updated regardless of the selected default runtime
-- fix(manager): add cooldown (default 1h) to worker builtin-upgrade notification — prevents repeated Matrix messages wasting Worker tokens when Manager crash-loops
-- fix(copaw): deduplicate customized skills that shadow builtins after upgrade — removes stale customized_skills/ copies when a newer CoPaw version ships the same skill as a builtin, preventing duplicate skill entries in the UI
-- docs(manager): improve CoPaw console documentation in SKILL.md — add trigger keywords, description, and scope notes; restructure TOOLS.md to clearly separate Skills vs Operations sections
-- fix(manager): worker AGENTS.md @mention protocol — require @mention when replying to Manager progress inquiries; change phase completion to task-only completion notification (TASK_COMPLETED format)
-- fix(copaw): skill sync now mirrors entire skill directory (including scripts/ and references/) instead of only pulling SKILL.md, matching OpenClaw worker's mc mirror behavior; restores +x on .sh files after pull
+### Controller
+
+- **fix(hiclaw): fix `hiclaw apply` silently ignoring all resources due to `loadResources()` parsing bug** — `loadResources()` called `strings.TrimSpace(line)` first (removing leading spaces), then checked `strings.HasPrefix(line, "  name:")` — this prefix could never match after trimming, so `r.Name` was always empty and every resource was silently skipped. Fixed by changing the check to `strings.HasPrefix(line, "name:")` (and the corresponding `TrimPrefix`) to match the already-trimmed line.
+
+- **fix(controller): handle stuck Phase="Pending" resources after failed package resolution** — When `ResolveAndExtract` or `create-worker.sh` failed, the `r.Status().Update()` setting `Phase="Failed"` could silently fail due to a resource version conflict, leaving the worker permanently stuck at `Phase="Pending"`. Fixed by: (1) refreshing the object via `r.Get()` before each error-path status update to avoid conflicts; (2) treating `Phase="Pending"` with a non-empty error `Message` as retriable, so the reconciler calls `handleCreate` instead of the no-op `handleUpdate`.
+
+### Security
+
+- **fix(security): restrict cloud worker OSS access with STS inline policy** — In cloud mode (Alibaba Cloud SAE), all workers shared the same RRSA role with unrestricted OSS bucket access, allowing any worker to read/write other workers' and manager's files. Now `oss-credentials.sh` injects an inline policy into the STS `AssumeRoleWithOIDC` request when `HICLAW_WORKER_NAME` is set, restricting the STS token to `agents/{worker}/*` and `shared/*` prefixes only — matching the per-worker MinIO policy used in local mode. Manager (which does not set `HICLAW_WORKER_NAME`) retains full access.
+- fix(controller): support `HICLAW_NACOS_USERNAME` and `HICLAW_NACOS_PASSWORD` as default Nacos credentials when `nacos://` URIs omit `user:pass@`
+
+### Cloud Runtime
+- **fix(cloud): auto-refresh STS credentials for all mc invocations** — wrap mc binary with `mc-wrapper.sh` that calls `ensure_mc_credentials` before every invocation, preventing token expiry after ~50 minutes in cloud mode. Affects: manager, worker, copaw.
+- fix(copaw): refresh STS credentials in Python sync loops to prevent MinIO sync failure after token expiry
+
+- fix(cloud): set `HICLAW_RUNTIME=aliyun` explicitly in Dockerfile.aliyun instead of relying on OIDC file detection at runtime
+- fix(cloud): respect pre-set `HICLAW_RUNTIME` in hiclaw-env.sh — only auto-detect when unset
+- fix: add explicit Matrix room join with retry before sending welcome message to prevent race condition
