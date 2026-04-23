@@ -1,86 +1,86 @@
 # ============================================================
-# HiClaw Manager Agent - All-in-One Container
+# HiClaw Manager Agent - OpenClaw Runtime
 # ============================================================
-# Based on openclaw-base (which includes all-in-one + Node.js + OpenClaw)
-# and layers on Tuwunel, MinIO, and Element Web.
+# Lightweight Manager container based on openclaw-base.
+# Does NOT include Higress, Tuwunel, MinIO, or Element Web.
+# All infrastructure is provided by the controller (embedded)
+# or K8s Pods (incluster). HICLAW_RUNTIME env var selects mode.
 #
-# Build args:
-#   HIGRESS_REGISTRY  - base image registry (default: cn-hangzhou)
-#   OPENCLAW_BASE_IMAGE - openclaw-base image (default: hiclaw/openclaw-base:latest)
+# Build from project root:
+#   docker build -f manager/Dockerfile -t hiclaw/hiclaw-manager:latest .
 # ============================================================
 
 ARG HIGRESS_REGISTRY=higress-registry.cn-hangzhou.cr.aliyuncs.com
-ARG OPENCLAW_BASE_IMAGE=hiclaw/openclaw-base:20260314-be855ee
+ARG OPENCLAW_BASE_IMAGE=hiclaw/openclaw-base:latest
+ARG HICLAW_CONTROLLER_IMAGE=hiclaw/hiclaw-controller:latest
 
-# ============ Stage 1: Tuwunel Matrix Server ============
-FROM ${HIGRESS_REGISTRY}/higress/tuwunel:20260216 AS tuwunel
-
-# ============ Stage 2: MinIO Object Storage ============
-FROM ${HIGRESS_REGISTRY}/higress/minio:20260216 AS minio
-
-# ============ Stage 3: MinIO Client (mc) ============
+# ============ Stage 1: MinIO Client (mc) ============
 FROM ${HIGRESS_REGISTRY}/higress/mc:20260216 AS mc
 
-# ============ Stage 4: Element Web ============
-FROM ${HIGRESS_REGISTRY}/higress/element-web:20260216 AS element-web
+# ============ Stage 2: hiclaw CLI (from controller image) ============
+FROM ${HICLAW_CONTROLLER_IMAGE} AS hiclaw-controller
 
-# ============ Final Image: Based on openclaw-base ============
-# openclaw-base already includes: all-in-one + Node.js 22 + OpenClaw + mcporter + common tools
+# ============ Final Image ============
 FROM ${OPENCLAW_BASE_IMAGE}
 
-# Create log directory
-RUN mkdir -p /var/log/hiclaw
-
-# ---- Copy binaries from build stages (HiClaw-specific components) ----
-
-# Tuwunel (single static binary)
-COPY --from=tuwunel /usr/bin/tuwunel /usr/local/bin/tuwunel
-
-# MinIO
-COPY --from=minio /usr/bin/minio /usr/local/bin/minio
-
-# mc (MinIO Client)
+# mc (MinIO Client) — direct binary, no STS wrapper needed in K8s mode
 COPY --from=mc /usr/bin/mc /usr/local/bin/mc
 
-# Element Web static files
-COPY --from=element-web /app /opt/element-web
+# hiclaw CLI — for worker/team/human management via controller REST API
+COPY --from=hiclaw-controller /usr/local/bin/hiclaw /usr/local/bin/hiclaw
 
-# Ensure openclaw binary is on PATH and config is found
+# ---- Built-in observability plugin (bundled unconditionally, enabled at runtime) ----
+# Placed before agent/configs COPY so that code changes do not invalidate this layer.
+ARG OPENCLAW_CMS_PLUGIN_URL=https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/0.1.2/openclaw-cms-plugin.tar.gz
+ENV OPENCLAW_CMS_PLUGIN_DIR="/opt/openclaw/extensions/openclaw-cms-plugin"
+RUN tmp_dir="$(mktemp -d)" && \
+    curl -fsSL "${OPENCLAW_CMS_PLUGIN_URL}" -o "${tmp_dir}/plugin.tar.gz" && \
+    mkdir -p "${OPENCLAW_CMS_PLUGIN_DIR}" && \
+    tar -xzf "${tmp_dir}/plugin.tar.gz" -C "${tmp_dir}" && \
+    if [ -d "${tmp_dir}/openclaw-cms-plugin" ]; then \
+      cp -rf "${tmp_dir}/openclaw-cms-plugin/." "${OPENCLAW_CMS_PLUGIN_DIR}/"; \
+    else \
+      cp -rf "${tmp_dir}/." "${OPENCLAW_CMS_PLUGIN_DIR}/"; \
+    fi && \
+    cd "${OPENCLAW_CMS_PLUGIN_DIR}" && \
+    npm install --omit=dev --ignore-scripts && \
+    rm -rf "${tmp_dir}"
+
+# Ensure openclaw binary is on PATH
 ENV PATH="/opt/openclaw/packages/clawdbot/node_modules/.bin:${PATH}"
-ENV OPENCLAW_CONFIG_PATH="/root/manager-workspace/openclaw.json"
 
-# ---- Copy HiClaw configuration and scripts ----
-# Our supervisord.conf replaces the Higress one; our scripts handle all components
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY scripts/ /opt/hiclaw/scripts/
+# ---- Copy Manager agent definitions ----
+COPY manager/agent/ /opt/hiclaw/agent/
+COPY manager/configs/ /opt/hiclaw/configs/
 
-# Install systemctl shim so 'openclaw gateway restart' works without systemd
-RUN cp /opt/hiclaw/scripts/systemctl-shim.sh /usr/local/bin/systemctl && \
-    chmod +x /usr/local/bin/systemctl
-COPY agent/ /opt/hiclaw/agent/
-COPY configs/ /opt/hiclaw/configs/
+# ---- Copy scripts: shared libs first, then manager scripts ----
+COPY shared/lib/ /opt/hiclaw/scripts/lib/
+COPY manager/scripts/ /opt/hiclaw/scripts/
 
 ARG BUILTIN_VERSION=latest
 RUN echo "${BUILTIN_VERSION}" > /opt/hiclaw/agent/.builtin-version
 
-# Make scripts executable
-RUN chmod +x /opt/hiclaw/scripts/init/*.sh /opt/hiclaw/scripts/lib/*.sh && \
-    chmod +x /opt/hiclaw/scripts/setup-host-symlinks.sh && \
+# Make all scripts executable
+RUN find /opt/hiclaw/scripts -name '*.sh' -exec chmod +x {} + && \
     find /opt/hiclaw/agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true && \
     find /opt/hiclaw/agent/worker-skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true && \
     find /opt/hiclaw/agent/worker-agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
 
-# ---- Ports ----
-# 8080: Higress Gateway (unified entry point)
-# 8001: Higress Console
-# 9001: MinIO Console
-# 18888: OpenClaw Console (via nginx reverse proxy to gateway loopback 18799)
-EXPOSE 8080 8001 9001 18888
+# HICLAW_RUNTIME is NOT hardcoded — injected by Helm (k8s) or SAE (aliyun) at deploy time
 
-# ---- Persistent data ----
-# /data: MinIO object storage, secrets, worker credentials
-# /root/manager-workspace: Manager's working directory (host-mounted via install script)
-VOLUME ["/data"]
+# Workspace directory
+ENV HOME=/root/manager-workspace
+RUN mkdir -p /root/manager-workspace /root/hiclaw-fs /root/.openclaw
 
-# ---- Start ----
-ENTRYPOINT ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+WORKDIR /root/manager-workspace
+
+# Workaround: lsof hangs in Kind (Docker-in-Docker) when scanning /proc.
+# OpenClaw Gateway uses lsof to check port availability before binding;
+# replace with a stub that always reports "port not in use" (exit 1).
+RUN rm -f /usr/bin/lsof && printf '#!/bin/sh\nexit 1\n' > /usr/bin/lsof && chmod +x /usr/bin/lsof
+
+# OpenClaw gateway port
+EXPOSE 18799
+
+# start-manager-agent.sh branches on HICLAW_RUNTIME env var
+ENTRYPOINT ["/opt/hiclaw/scripts/init/start-manager-agent.sh"]

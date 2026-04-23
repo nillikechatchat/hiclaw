@@ -9,6 +9,7 @@
 #   lifecycle-worker.sh --action check-idle
 #   lifecycle-worker.sh --action stop --worker <name>
 #   lifecycle-worker.sh --action start --worker <name>
+#   lifecycle-worker.sh --action ensure-ready --worker <name>
 
 set -euo pipefail
 
@@ -54,7 +55,7 @@ _init_lifecycle_file() {
         cat > "$LIFECYCLE_FILE" << 'EOF'
 {
   "version": 1,
-  "idle_timeout_minutes": 30,
+  "idle_timeout_minutes": 720,
   "updated_at": "",
   "workers": {}
 }
@@ -64,11 +65,15 @@ EOF
         cat > "$LIFECYCLE_FILE" << EOF
 {
   "version": 1,
-  "idle_timeout_minutes": 30,
+  "idle_timeout_minutes": ${HICLAW_WORKER_IDLE_TIMEOUT:-720},
   "updated_at": "$(_ts)",
   "workers": {}
 }
 EOF
+    else
+        # File already exists — respect any manual edits.
+        # HICLAW_WORKER_IDLE_TIMEOUT is only used for initial creation (above).
+        true
     fi
 
     if [ ! -f "$STATE_FILE" ]; then
@@ -138,14 +143,28 @@ _worker_has_any_tasks() {
     [ "$count" -gt 0 ]
 }
 
+# Check if a worker has enabled cron jobs in its .openclaw/cron/jobs.json
+# Returns 0 if worker has enabled cron jobs, 1 otherwise
+_worker_has_cron_jobs() {
+    local worker="$1"
+    local cron_file="/root/hiclaw-fs/agents/${worker}/.openclaw/cron/jobs.json"
+    if [ ! -f "$cron_file" ]; then
+        return 1
+    fi
+    local count
+    # Handle both {"jobs":[...]} and bare array [...] formats
+    count=$(jq '(if type == "object" then .jobs // [] else . end) | [.[] | select(.state.enabled == true)] | length' "$cron_file" 2>/dev/null || echo "0")
+    [ "$count" -gt 0 ]
+}
+
 # ─── Actions ─────────────────────────────────────────────────────────────────
 
-# Sync container status from Docker API into lifecycle file
+# Sync worker status into lifecycle file (Docker or cloud backend)
 action_sync_status() {
     _init_lifecycle_file
 
-    if ! container_api_available; then
-        _log "Container API not available — marking all workers as remote"
+    if ! container_api_available 2>/dev/null; then
+        _log "No worker backend available — marking all workers as remote"
         local workers
         workers=$(_get_all_workers)
         for worker in $workers; do
@@ -165,8 +184,8 @@ action_sync_status() {
     for worker in $workers; do
         _ensure_worker_entry "$worker"
         local status
-        status=$(container_status_worker "$worker")
-        _log "Worker $worker: container_status=$status"
+        status=$(worker_backend_status "$worker")
+        _log "Worker $worker: status=$status"
         local tmp
         tmp=$(mktemp)
         jq --arg w "$worker" --arg s "$status" --arg ts "$(_ts)" \
@@ -204,6 +223,13 @@ action_check_idle() {
             continue
         fi
 
+        # Skip team workers — they must stay running for team coordination
+        local _team_id
+        _team_id=$(jq -r --arg w "$worker" '.workers[$w].team_id // empty' "$REGISTRY_FILE" 2>/dev/null)
+        if [ -n "$_team_id" ]; then
+            continue
+        fi
+
         if _worker_has_any_tasks "$worker"; then
             # Worker is active (finite or infinite task) — clear idle_since
             local current_idle
@@ -216,10 +242,38 @@ action_check_idle() {
                     '.workers[$w].idle_since = null | .updated_at = $ts' \
                     "$LIFECYCLE_FILE" > "$tmp" && mv "$tmp" "$LIFECYCLE_FILE"
             fi
+        elif _worker_has_cron_jobs "$worker"; then
+            # Worker has enabled cron jobs — never idle-stop
+            local current_idle
+            current_idle=$(_get_worker_field "$worker" "idle_since")
+            if [ -n "$current_idle" ] && [ "$current_idle" != "null" ]; then
+                _log "Worker $worker has cron jobs — clearing idle_since (idle-stop disabled)"
+                local tmp
+                tmp=$(mktemp)
+                jq --arg w "$worker" --arg ts "$(_ts)" \
+                    '.workers[$w].idle_since = null | .updated_at = $ts' \
+                    "$LIFECYCLE_FILE" > "$tmp" && mv "$tmp" "$LIFECYCLE_FILE"
+            fi
         else
             # Worker has no active tasks (neither finite nor infinite)
             if [ "$container_status" != "running" ]; then
                 continue
+            fi
+
+            # Safety net: if worker was recently started, don't mark idle yet.
+            # This protects against races where the Manager hasn't registered
+            # the task in state.json yet.
+            local last_started
+            last_started=$(_get_worker_field "$worker" "last_started_at")
+            if [ -n "$last_started" ] && [ "$last_started" != "null" ]; then
+                local started_epoch
+                started_epoch=$(date -u -d "$last_started" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$last_started" +%s 2>/dev/null)
+                local since_start=$(( now_epoch - started_epoch ))
+                local grace_seconds=$(( idle_timeout * 60 ))
+                if [ "$since_start" -lt "$grace_seconds" ]; then
+                    _log "Worker $worker has no tasks but was started ${since_start}s ago (grace: ${grace_seconds}s) — skipping idle check"
+                    continue
+                fi
             fi
 
             local idle_since
@@ -249,19 +303,19 @@ action_check_idle() {
     done
 }
 
-# Stop a worker container
+# Stop a worker (Docker container or cloud instance)
 action_stop() {
     local worker="$1"
     _init_lifecycle_file
     _ensure_worker_entry "$worker"
 
-    if ! container_api_available; then
-        _log "ERROR: Container API not available"
+    if ! container_api_available 2>/dev/null; then
+        _log "ERROR: No worker backend available"
         return 1
     fi
 
     _log "Stopping worker $worker"
-    if container_stop_worker "$worker"; then
+    if worker_backend_stop "$worker"; then
         local tmp
         tmp=$(mktemp)
         jq --arg w "$worker" --arg ts "$(_ts)" \
@@ -276,8 +330,40 @@ action_stop() {
     fi
 }
 
-# Start (wake up) a stopped worker container, or recreate if the container
-# no longer exists (e.g. after Manager upgrade where old containers were removed).
+# Delete a worker: stop container, remove it, and clean up lifecycle state
+action_delete() {
+    local worker="$1"
+    _init_lifecycle_file
+    _ensure_worker_entry "$worker"
+
+    if ! container_api_available 2>/dev/null; then
+        _log "ERROR: No worker backend available"
+        return 1
+    fi
+
+    # Stop first (ignore errors — may already be stopped)
+    _log "Stopping worker $worker before delete"
+    worker_backend_stop "$worker" 2>/dev/null || true
+
+    # Delete container
+    _log "Deleting worker $worker container"
+    if worker_backend_delete "$worker"; then
+        _log "Worker $worker container deleted"
+    else
+        _log "WARN: Failed to delete worker $worker container (may already be removed)"
+    fi
+
+    # Clean up lifecycle state
+    local tmp
+    tmp=$(mktemp)
+    jq --arg w "$worker" --arg ts "$(_ts)" \
+        'del(.workers[$w]) | .updated_at = $ts' \
+        "$LIFECYCLE_FILE" > "$tmp" && mv "$tmp" "$LIFECYCLE_FILE"
+    _log "Worker $worker removed from lifecycle file"
+}
+
+# Start (wake up) a stopped worker, or recreate if it no longer exists
+# (e.g. after Manager upgrade where old containers were removed).
 action_start() {
     local worker="$1"
     _init_lifecycle_file
@@ -292,33 +378,54 @@ action_start() {
         return 1
     fi
 
-    if ! container_api_available; then
-        _log "ERROR: Container API not available"
+    local backend
+    if ! container_api_available 2>/dev/null; then
+        _log "ERROR: No worker backend available"
         return 1
     fi
 
     local status
-    status=$(container_status_worker "$worker")
+    status=$(worker_backend_status "$worker")
 
     local ok=false
     if [ "$status" = "not_found" ]; then
-        _log "Worker $worker container not found — recreating"
+        _log "Worker $worker not found — recreating"
         local creds_file="/data/worker-creds/${worker}.env"
-        if [ ! -f "$creds_file" ]; then
-            _log "ERROR: No credentials found for $worker ($creds_file missing)"
-            return 1
+        if [ -f "$creds_file" ]; then
+            source "$creds_file"
         fi
-        source "$creds_file"
         local runtime
         runtime=$(jq -r --arg w "$worker" '.workers[$w].runtime // "openclaw"' "$REGISTRY_FILE" 2>/dev/null)
-        if [ "$runtime" = "copaw" ]; then
-            container_create_copaw_worker "$worker" "$worker" "$WORKER_MINIO_PASSWORD" 2>&1 && ok=true
-        else
-            container_create_worker "$worker" "$worker" "$WORKER_MINIO_PASSWORD" 2>&1 && ok=true
-        fi
+
+        # Build create request for controller (include env vars for worker to function)
+        local env_map
+        env_map=$(jq -cn \
+            --arg name "$worker" \
+            --arg fak "$worker" \
+            --arg fsk "${WORKER_MINIO_PASSWORD:-}" \
+            --arg fs_domain "${HICLAW_FS_DOMAIN:-fs-local.hiclaw.io}" \
+            --arg fs_endpoint "${HICLAW_FS_ENDPOINT:-}" \
+            --arg fs_bucket "${HICLAW_FS_BUCKET:-}" \
+            --arg controller_url "${HICLAW_CONTROLLER_URL:-}" \
+            '{
+                "HICLAW_WORKER_NAME": $name,
+                "HICLAW_FS_ENDPOINT": (if $fs_endpoint != "" then $fs_endpoint else ("http://" + ($fs_domain | split(":")[0]) + ":8080") end),
+                "HICLAW_FS_ACCESS_KEY": $fak,
+                "HICLAW_FS_SECRET_KEY": $fsk
+            }
+            | if $controller_url != "" then . + {"HICLAW_CONTROLLER_URL": $controller_url} else . end
+            | if $fs_bucket != "" then . + {"HICLAW_FS_BUCKET": $fs_bucket} else . end')
+
+        local create_body
+        create_body=$(jq -cn \
+            --arg name "$worker" \
+            --arg runtime "$runtime" \
+            --argjson env "$env_map" \
+            '{name: $name, runtime: $runtime, env: $env}')
+        worker_backend_create "$create_body" > /dev/null 2>&1 && ok=true
     else
         _log "Starting worker $worker (status: $status)"
-        container_start_worker "$worker" && ok=true
+        worker_backend_start "$worker" && ok=true
     fi
 
     if [ "$ok" = true ]; then
@@ -333,6 +440,66 @@ action_start() {
         _log "Worker $worker running and lifecycle file updated"
     else
         _log "ERROR: Failed to start/recreate worker $worker"
+        return 1
+    fi
+}
+
+# Ensure a specific worker is ready to receive messages.
+# If the container is stopped, start it; if not_found, recreate it.
+# Outputs JSON: {"worker":"<name>","status":"ready|started|recreated|remote|failed","container_status":"..."}
+# Usage: action_ensure_ready <worker_name>
+action_ensure_ready() {
+    local worker="$1"
+    _init_lifecycle_file
+
+    # Check deployment type — skip remote workers
+    local deployment
+    deployment=$(jq -r --arg w "$worker" '.workers[$w].deployment // "local"' "$REGISTRY_FILE" 2>/dev/null)
+    if [ "$deployment" = "remote" ]; then
+        _log "Worker $worker is remote — assumed ready"
+        echo "{\"worker\":\"$worker\",\"status\":\"remote\",\"container_status\":\"remote\"}"
+        return 0
+    fi
+
+    if ! container_api_available; then
+        _log "Container API not available — cannot check worker $worker"
+        echo "{\"worker\":\"$worker\",\"status\":\"failed\",\"container_status\":\"unknown\",\"error\":\"container_api_unavailable\"}"
+        return 1
+    fi
+
+    local status
+    status=$(worker_backend_status "$worker")
+    _log "Worker $worker status=$status"
+
+    if [ "$status" = "running" ]; then
+        echo "{\"worker\":\"$worker\",\"status\":\"ready\",\"container_status\":\"running\"}"
+        return 0
+    fi
+
+    if [ "$status" = "not_found" ]; then
+        _log "Worker $worker container not found — attempting recreate"
+        _ensure_worker_entry "$worker"
+        if action_start "$worker" 2>&1; then
+            _log "Worker $worker recreated successfully"
+            echo "{\"worker\":\"$worker\",\"status\":\"recreated\",\"container_status\":\"running\"}"
+            return 0
+        else
+            _log "ERROR: Failed to recreate worker $worker"
+            echo "{\"worker\":\"$worker\",\"status\":\"failed\",\"container_status\":\"not_found\",\"error\":\"recreate_failed\"}"
+            return 1
+        fi
+    fi
+
+    # stopped / exited / created — try to start
+    _log "Worker $worker is $status — starting"
+    _ensure_worker_entry "$worker"
+    if action_start "$worker" 2>&1; then
+        _log "Worker $worker started successfully"
+        echo "{\"worker\":\"$worker\",\"status\":\"started\",\"container_status\":\"running\"}"
+        return 0
+    else
+        _log "ERROR: Failed to start worker $worker"
+        echo "{\"worker\":\"$worker\",\"status\":\"failed\",\"container_status\":\"$status\",\"error\":\"start_failed\"}"
         return 1
     fi
 }
@@ -360,7 +527,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$ACTION" ]; then
-    echo "Usage: $0 --action <sync-status|check-idle|stop|start> [--worker <name>]" >&2
+    echo "Usage: $0 --action <sync-status|check-idle|stop|start|delete> [--worker <name>]" >&2
     exit 1
 fi
 
@@ -378,6 +545,13 @@ case "$ACTION" in
         fi
         action_stop "$WORKER"
         ;;
+    delete)
+        if [ -z "$WORKER" ]; then
+            echo "ERROR: --worker required for action 'delete'" >&2
+            exit 1
+        fi
+        action_delete "$WORKER"
+        ;;
     start)
         if [ -z "$WORKER" ]; then
             echo "ERROR: --worker required for action 'start'" >&2
@@ -385,8 +559,15 @@ case "$ACTION" in
         fi
         action_start "$WORKER"
         ;;
+    ensure-ready)
+        if [ -z "$WORKER" ]; then
+            echo "ERROR: --worker required for action 'ensure-ready'" >&2
+            exit 1
+        fi
+        action_ensure_ready "$WORKER"
+        ;;
     *)
-        echo "ERROR: Unknown action '$ACTION'. Use: sync-status, check-idle, stop, start" >&2
+        echo "ERROR: Unknown action '$ACTION'. Use: sync-status, check-idle, stop, delete, start, ensure-ready" >&2
         exit 1
         ;;
 esac

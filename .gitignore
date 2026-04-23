@@ -5,9 +5,16 @@ hiclaw-manager.env
 # Replay logs (contain conversation data, may include secrets)
 logs/
 
+# Debug log exports
+debug-log/
+
 # IDE / Kiro workspace files
 .kiro/
 .idea/
+
+# Claude Code IDE
+.claude/
+CLAUDE.md
 
 # OS files
 .DS_Store
@@ -32,3 +39,21 @@ manager/copaw-agent/
 node_modules/
 package.json
 pnpm-lock.yaml
+.cursor/
+
+# Claude Code
+CLAUDE.md
+
+
+# Compiled binaries
+hiclaw-controller/controller
+hiclaw-controller/hiclaw
+
+# Build-time agent templates (copied from manager/agent/ during docker build)
+hiclaw-controller/agent/
+
+# Helm dependency artifacts
+helm/hiclaw/charts/*.tgz
+
+# GitNexus
+.gitnexus/

@@ -1,0 +1,250 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: teams.hiclaw.io
+spec:
+  group: hiclaw.io
+  versions:
+    - name: v1beta1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [leader]
+              properties:
+                description:
+                  type: string
+                peerMentions:
+                  type: boolean
+                  description: "Whether team workers can @mention each other in group rooms (default: true)"
+                channelPolicy:
+                  type: object
+                  description: "Team-wide communication policy overrides (applied to all members)"
+                  properties:
+                    groupAllowExtra:
+                      type: array
+                      items:
+                        type: string
+                    groupDenyExtra:
+                      type: array
+                      items:
+                        type: string
+                    dmAllowExtra:
+                      type: array
+                      items:
+                        type: string
+                    dmDenyExtra:
+                      type: array
+                      items:
+                        type: string
+                admin:
+                  type: object
+                  description: "Team-specific admin (human). Has admin authority within this team."
+                  properties:
+                    name:
+                      type: string
+                      description: "Human name (must exist in humans-registry)"
+                    matrixUserId:
+                      type: string
+                      description: "Matrix user ID (e.g. @john:domain)"
+                leader:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                    model:
+                      type: string
+                    identity:
+                      type: string
+                    soul:
+                      type: string
+                    agents:
+                      type: string
+                    package:
+                      type: string
+                    heartbeat:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                        every:
+                          type: string
+                    workerIdleTimeout:
+                      type: string
+                    state:
+                      type: string
+                      enum: [Running, Sleeping, Stopped]
+                      description: "Desired lifecycle state for the team leader (default: Running)"
+                    channelPolicy:
+                      type: object
+                      properties:
+                        groupAllowExtra:
+                          type: array
+                          items:
+                            type: string
+                        groupDenyExtra:
+                          type: array
+                          items:
+                            type: string
+                        dmAllowExtra:
+                          type: array
+                          items:
+                            type: string
+                        dmDenyExtra:
+                          type: array
+                          items:
+                            type: string
+                workers:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+                      model:
+                        type: string
+                      runtime:
+                        type: string
+                        enum: [openclaw, copaw, hermes]
+                      image:
+                        type: string
+                      identity:
+                        type: string
+                      soul:
+                        type: string
+                      agents:
+                        type: string
+                      skills:
+                        type: array
+                        items:
+                          type: string
+                      mcpServers:
+                        type: array
+                        items:
+                          type: string
+                      package:
+                        type: string
+                      expose:
+                        type: array
+                        description: Ports to expose via Higress gateway
+                        items:
+                          type: object
+                          required: [port]
+                          properties:
+                            port:
+                              type: integer
+                            protocol:
+                              type: string
+                              enum: [http, grpc]
+                              default: http
+                      channelPolicy:
+                        type: object
+                        properties:
+                          groupAllowExtra:
+                            type: array
+                            items:
+                              type: string
+                          groupDenyExtra:
+                            type: array
+                            items:
+                              type: string
+                          dmAllowExtra:
+                            type: array
+                            items:
+                              type: string
+                          dmDenyExtra:
+                            type: array
+                            items:
+                              type: string
+                      state:
+                        type: string
+                        enum: [Running, Sleeping, Stopped]
+                        description: "Desired lifecycle state for this team worker (default: Running)"
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [Pending, Active, Degraded, Failed]
+                teamRoomID:
+                  type: string
+                leaderDMRoomID:
+                  type: string
+                leaderReady:
+                  type: boolean
+                readyWorkers:
+                  type: integer
+                totalWorkers:
+                  type: integer
+                message:
+                  type: string
+                members:
+                  type: array
+                  description: "Per-member state (leader + workers). Consolidates all per-member fields (observed, spec hash, roomID, matrixUserID, exposedPorts) into a single sorted-by-name slice."
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+                        description: "Member's canonical name (matches spec.leader.name or spec.workers[i].name)."
+                      role:
+                        type: string
+                        enum: [team_leader, worker]
+                        description: "Role of this member."
+                      roomID:
+                        type: string
+                        description: "Member's personal communication room with the Manager."
+                      matrixUserID:
+                        type: string
+                        description: "Member's Matrix MXID."
+                      specHash:
+                        type: string
+                        description: "fnv64a hash of the last fully-reconciled WorkerSpec for this member. Empty means never fully reconciled."
+                      observed:
+                        type: boolean
+                        description: "True once ReconcileMemberInfra has succeeded at least once; stays true across post-infra failures to avoid Matrix access token rotation."
+                      ready:
+                        type: boolean
+                        description: "Mirrors backend.Status Running/Ready. Aggregates into leaderReady and readyWorkers."
+                      exposedPorts:
+                        type: array
+                        description: "Ports currently exposed via Higress for this member (workers only)."
+                        items:
+                          type: object
+                          required: [port, domain]
+                          properties:
+                            port:
+                              type: integer
+                            domain:
+                              type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Leader
+          type: string
+          jsonPath: .spec.leader.name
+        - name: Workers
+          type: integer
+          jsonPath: .status.totalWorkers
+        - name: Ready
+          type: integer
+          jsonPath: .status.readyWorkers
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: teams
+    singular: team
+    kind: Team
+    shortNames: [tm]
