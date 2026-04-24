@@ -1,0 +1,7 @@
+{{.Files.Get "templates/_helpers.tpl"}}
+{{.Files.Get "templates/deployment.yaml"}}
+{{.Files.Get "templates/service.yaml"}}
+{{.Files.Get "templates/configmap.yaml"}}
+{{.Files.Get "templates/rbac.yaml"}}
+{{.Files.Get "templates/ingress.yaml"}}
+{{.Files.Get "templates/servicemonitor.yaml"}}

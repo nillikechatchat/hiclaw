@@ -1,0 +1,117 @@
+# Default values for openfang-worker
+# This is a YAML-formatted file
+
+worker:
+  # LLM model to use
+  model: claude-sonnet-4-6
+  
+  # Number of replicas
+  replicas: 3
+  
+  # Docker image
+  image:
+    repository: hiclaw/openfang-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  # Resource limits and requests
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 2000m
+  
+  # Worker runtime configuration
+  runtimeConfig:
+    pluginDir: /app/plugins
+    observability:
+      enabled: true
+    security:
+      smCrypto: false
+      auditLog: true
+
+# Matrix configuration
+matrix:
+  # Tuwunel homeserver URL
+  homeserverUrl: http://tuwunel:6167
+  # Access token (should be created by hiclaw-controller)
+  accessToken: ""
+
+# Higress gateway configuration
+higress:
+  # Gateway URL
+  url: http://higress-gateway:8080
+  # Consumer token (should be created by hiclaw-controller)
+  token: ""
+
+# Observability stack
+observability:
+  enabled: true
+  
+  jaeger:
+    enabled: true
+    allInOne:
+      enabled: true
+    
+  prometheus:
+    enabled: true
+
+# Security settings
+security:
+  # Enable RBAC
+  rbac:
+    enabled: true
+  
+  # Network policies
+  networkPolicies:
+    enabled: true
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8080
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: higress
+  annotations: {}
+  hosts:
+    - host: openfang.hiclaw.io
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app
+              operator: In
+              values:
+                - openfang
+        topologyKey: kubernetes.io/hostname

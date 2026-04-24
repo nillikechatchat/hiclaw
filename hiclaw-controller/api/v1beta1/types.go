@@ -21,17 +21,64 @@ type Worker struct {
 }
 
 type WorkerSpec struct {
-	Model      string          `json:"model"`
-	Runtime    string          `json:"runtime,omitempty"` // openclaw | copaw (default: openclaw)
-	Image      string          `json:"image,omitempty"`   // custom Docker image
-	Identity   string          `json:"identity,omitempty"`
-	Soul       string          `json:"soul,omitempty"`
-	Agents     string          `json:"agents,omitempty"`
-	Skills     []string        `json:"skills,omitempty"`
-	McpServers []string        `json:"mcpServers,omitempty"`
-	Package    string          `json:"package,omitempty"` // file://, http(s)://, or nacos:// URI
-	Expose     []ExposePort    `json:"expose,omitempty"`  // ports to expose via Higress gateway
-	ChannelPolicy *ChannelPolicySpec `json:"channelPolicy,omitempty"`
+	Model         string                `json:"model"`
+	Runtime       string                `json:"runtime,omitempty"` // openclaw | copaw | fastclaw | zeroclaw | nanoclaw | openfang (default: openclaw)
+	RuntimeConfig *RuntimeConfigSpec    `json:"runtimeConfig,omitempty"`
+	Image         string                `json:"image,omitempty"` // custom Docker image
+	Identity      string                `json:"identity,omitempty"`
+	Soul          string                `json:"soul,omitempty"`
+	Agents        string                `json:"agents,omitempty"`
+	Skills        []string              `json:"skills,omitempty"`
+	McpServers    []string              `json:"mcpServers,omitempty"`
+	Package       string                `json:"package,omitempty"` // file://, http(s)://, nacos://, or packages/{name}.zip URI
+	Expose        []ExposePort          `json:"expose,omitempty"`  // ports to expose via Higress gateway
+	ChannelPolicy *ChannelPolicySpec    `json:"channelPolicy,omitempty"`
+}
+
+// RuntimeConfigSpec defines runtime-specific configuration options.
+type RuntimeConfigSpec struct {
+	FastClaw  *FastClawConfig  `json:"fastclaw,omitempty"`
+	ZeroClaw  *ZeroClawConfig  `json:"zeroclaw,omitempty"`
+	NanoClaw  *NanoClawConfig  `json:"nanoclaw,omitempty"`
+	OpenFang  *OpenFangConfig  `json:"openfang,omitempty"`
+}
+
+// FastClawConfig holds configuration for the fastclaw (Python lightweight) runtime.
+type FastClawConfig struct {
+	PythonVersion string `json:"pythonVersion,omitempty"` // 3.11 (default) | 3.12
+	SDK           string `json:"sdk,omitempty"`           // claude (default) | openai
+}
+
+// ZeroClawConfig holds configuration for the zeroclaw (Rust high-performance) runtime.
+type ZeroClawConfig struct {
+	WasmSupport bool `json:"wasmSupport,omitempty"` // default: false
+	Concurrency int  `json:"concurrency,omitempty"` // default: 100, range: 1-10000
+}
+
+// NanoClawConfig holds configuration for the nanoclaw (Node.js minimal) runtime.
+type NanoClawConfig struct {
+	ContainerTimeout int    `json:"containerTimeout,omitempty"` // default: 300 seconds (5 min), range: 60-1800
+	Channel          string `json:"channel,omitempty"`          // matrix (default) | whatsapp
+}
+
+// OpenFangConfig holds configuration for the openfang (Rust enterprise) runtime.
+type OpenFangConfig struct {
+	PluginDir     string                    `json:"pluginDir,omitempty"` // default: /app/plugins
+	Observability *OpenFangObservability    `json:"observability,omitempty"`
+	Security      *OpenFangSecurity         `json:"security,omitempty"`
+}
+
+// OpenFangObservability defines observability settings for openfang.
+type OpenFangObservability struct {
+	Enabled         bool   `json:"enabled,omitempty"`
+	TracingEndpoint string `json:"tracingEndpoint,omitempty"`
+	MetricsEndpoint string `json:"metricsEndpoint,omitempty"`
+}
+
+// OpenFangSecurity defines security settings for openfang.
+type OpenFangSecurity struct {
+	SMCrypto  bool `json:"smCrypto,omitempty"`  // Enable Chinese commercial cryptographic algorithms
+	AuditLog  bool `json:"auditLog,omitempty"`  // Enable audit logging (default: true)
 }
 
 // ExposePort defines a container port to expose via the Higress gateway.
