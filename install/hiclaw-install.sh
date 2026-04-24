@@ -512,12 +512,20 @@ msg() {
         # --- Default worker runtime ---
         "worker_runtime.title.zh") text="--- 默认 Worker 运行时 ---" ;;
         "worker_runtime.title.en") text="--- Default Worker Runtime ---" ;;
-        "worker_runtime.openclaw.zh") text="OpenClaw（Node.js 容器，~500MB 内存）" ;;
-        "worker_runtime.openclaw.en") text="OpenClaw (Node.js container, ~500MB RAM)" ;;
-        "worker_runtime.copaw.zh") text="CoPaw（Python 容器，~150MB 内存，默认关闭控制台，可跟 Manager 对话按需开启）" ;;
-        "worker_runtime.copaw.en") text="CoPaw (Python container, ~150MB RAM, console off by default, enable on demand via Manager)" ;;
-        "worker_runtime.choice.zh") text="请选择 [1/2]" ;;
-        "worker_runtime.choice.en") text="Enter choice [1/2]" ;;
+        "worker_runtime.openclaw.zh") text="OpenClaw（Node.js 容器，~500MB 内存，通用场景）" ;;
+        "worker_runtime.openclaw.en") text="OpenClaw (Node.js container, ~500MB RAM, general purpose)" ;;
+        "worker_runtime.copaw.zh") text="CoPaw（Python 容器，~150MB 内存，默认关闭控制台）" ;;
+        "worker_runtime.copaw.en") text="CoPaw (Python container, ~150MB RAM, console off by default)" ;;
+        "worker_runtime.fastclaw.zh") text="fastclaw（Python 轻量级，~300MB 内存，快速原型）" ;;
+        "worker_runtime.fastclaw.en") text="fastclaw (Python lightweight, ~300MB RAM, fast prototyping)" ;;
+        "worker_runtime.zeroclaw.zh") text="ZeroClaw（Rust 高性能，~180MB 内存，QPS 6800+）" ;;
+        "worker_runtime.zeroclaw.en") text="ZeroClaw (Rust high-performance, ~180MB RAM, QPS 6800+)" ;;
+        "worker_runtime.nanoclaw.zh") text="NanoClaw（Node.js 极简，~100MB 内存，个人助手）" ;;
+        "worker_runtime.nanoclaw.en") text="NanoClaw (Node.js minimal, ~100MB RAM, personal assistant)" ;;
+        "worker_runtime.openfang.zh") text="openfang（Rust 企业级，~512MB 内存，插件系统）" ;;
+        "worker_runtime.openfang.en") text="openfang (Rust enterprise, ~512MB RAM, plugin system)" ;;
+        "worker_runtime.choice.zh") text="请选择 [1-6]" ;;
+        "worker_runtime.choice.en") text="Enter choice [1-6]" ;;
         "worker_runtime.selected.zh") text="默认 Worker 运行时: %s" ;;
         "worker_runtime.selected.en") text="Default Worker runtime: %s" ;;
         "worker_runtime.title_short.zh") text="默认 Worker 运行时" ;;
@@ -893,6 +901,10 @@ resolve_image_tags() {
     MANAGER_COPAW_IMAGE="${HICLAW_INSTALL_MANAGER_COPAW_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-manager-copaw:${HICLAW_VERSION}}"
     WORKER_IMAGE="${HICLAW_INSTALL_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-worker:${HICLAW_VERSION}}"
     COPAW_WORKER_IMAGE="${HICLAW_INSTALL_COPAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-copaw-worker:${HICLAW_VERSION}}"
+    FASTCLAW_WORKER_IMAGE="${HICLAW_INSTALL_FASTCLAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-fastclaw-worker:${HICLAW_VERSION}}"
+    ZEROCLAW_WORKER_IMAGE="${HICLAW_INSTALL_ZEROCLAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-zeroclaw-worker:${HICLAW_VERSION}}"
+    NANOCLAW_WORKER_IMAGE="${HICLAW_INSTALL_NANOCLAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-nanoclaw-worker:${HICLAW_VERSION}}"
+    OPENFANG_WORKER_IMAGE="${HICLAW_INSTALL_OPENFANG_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-openfang-worker:${HICLAW_VERSION}}"
     # docker-proxy: prefer versioned tag, fall back to :latest at pull time
     # via resolve_docker_proxy_image().
     DOCKER_PROXY_IMAGE="${HICLAW_INSTALL_DOCKER_PROXY_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-docker-proxy:${HICLAW_VERSION}}"
@@ -1861,6 +1873,10 @@ step_runtime() {
     echo ""
     echo "  1) $(msg worker_runtime.openclaw)"
     echo "  2) $(msg worker_runtime.copaw)"
+    echo "  3) $(msg worker_runtime.fastclaw)"
+    echo "  4) $(msg worker_runtime.zeroclaw)"
+    echo "  5) $(msg worker_runtime.nanoclaw)"
+    echo "  6) $(msg worker_runtime.openfang)"
     echo ""
     if [ "${HICLAW_NON_INTERACTIVE}" = "1" ]; then
         HICLAW_DEFAULT_WORKER_RUNTIME="${HICLAW_DEFAULT_WORKER_RUNTIME:-openclaw}"
@@ -1872,6 +1888,10 @@ step_runtime() {
         if [ -n "${_runtime_choice}" ]; then
             case "${_runtime_choice}" in
                 2) HICLAW_DEFAULT_WORKER_RUNTIME="copaw" ;;
+                3) HICLAW_DEFAULT_WORKER_RUNTIME="fastclaw" ;;
+                4) HICLAW_DEFAULT_WORKER_RUNTIME="zeroclaw" ;;
+                5) HICLAW_DEFAULT_WORKER_RUNTIME="nanoclaw" ;;
+                6) HICLAW_DEFAULT_WORKER_RUNTIME="openfang" ;;
                 *) HICLAW_DEFAULT_WORKER_RUNTIME="openclaw" ;;
             esac
         fi
@@ -1882,6 +1902,10 @@ step_runtime() {
         _runtime_choice="${_runtime_choice:-1}"
         case "${_runtime_choice}" in
             2) HICLAW_DEFAULT_WORKER_RUNTIME="copaw" ;;
+            3) HICLAW_DEFAULT_WORKER_RUNTIME="fastclaw" ;;
+            4) HICLAW_DEFAULT_WORKER_RUNTIME="zeroclaw" ;;
+            5) HICLAW_DEFAULT_WORKER_RUNTIME="nanoclaw" ;;
+            6) HICLAW_DEFAULT_WORKER_RUNTIME="openfang" ;;
             *) HICLAW_DEFAULT_WORKER_RUNTIME="openclaw" ;;
         esac
     fi
@@ -2378,11 +2402,26 @@ EOF
     fi
 
     # Pull worker image for the selected runtime
-    if [ "${HICLAW_DEFAULT_WORKER_RUNTIME}" = "copaw" ]; then
-        _pull_image "${COPAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
-    else
-        _pull_image "${WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
-    fi
+    case "${HICLAW_DEFAULT_WORKER_RUNTIME}" in
+        copaw)
+            _pull_image "${COPAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
+            ;;
+        fastclaw)
+            _pull_image "${FASTCLAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
+            ;;
+        zeroclaw)
+            _pull_image "${ZEROCLAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
+            ;;
+        nanoclaw)
+            _pull_image "${NANOCLAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
+            ;;
+        openfang)
+            _pull_image "${OPENFANG_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
+            ;;
+        *)
+            _pull_image "${WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
+            ;;
+    esac
 
     # Always pull copaw worker image — team workers require copaw runtime
     if [ "${HICLAW_DEFAULT_WORKER_RUNTIME}" != "copaw" ]; then
@@ -2394,15 +2433,31 @@ EOF
         fi
     fi
 
-    # During upgrade, also pull the other worker image if containers using it exist locally.
+    # During upgrade, also pull the other worker images if containers using them exist locally.
     # This ensures ALL worker containers get updated, not just the ones matching the selected runtime.
     if [ "${HICLAW_UPGRADE:-0}" = "1" ]; then
-        if [ "${HICLAW_DEFAULT_WORKER_RUNTIME}" = "copaw" ]; then
-            # Selected copaw, check if any openclaw worker image exists locally
-            if ${DOCKER_CMD} image inspect "${WORKER_IMAGE}" >/dev/null 2>&1; then
-                _pull_image "${WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
-            fi
-        fi
+        case "${HICLAW_DEFAULT_WORKER_RUNTIME}" in
+            copaw)
+                # Selected copaw, check if any openclaw/other worker images exist locally
+                for _other_img in "${WORKER_IMAGE}" "${FASTCLAW_WORKER_IMAGE}" "${ZEROCLAW_WORKER_IMAGE}" "${NANOCLAW_WORKER_IMAGE}" "${OPENFANG_WORKER_IMAGE}"; do
+                    if ${DOCKER_CMD} image inspect "${_other_img}" >/dev/null 2>&1; then
+                        _pull_image "${_other_img}" "install.image.worker_exists" "install.image.pulling_worker"
+                    fi
+                done
+                ;;
+            fastclaw|zeroclaw|nanoclaw|openfang)
+                # Selected new runtime, pull standard worker image for backwards compatibility
+                if ${DOCKER_CMD} image inspect "${WORKER_IMAGE}" >/dev/null 2>&1; then
+                    _pull_image "${WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
+                fi
+                ;;
+            *)
+                # Selected openclaw, check if copaw image exists
+                if ${DOCKER_CMD} image inspect "${COPAW_WORKER_IMAGE}" >/dev/null 2>&1; then
+                    _pull_image "${COPAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
+                fi
+                ;;
+        esac
     fi
 
     # Resolve and pull docker-proxy image (probes versioned tag, falls back to latest)
