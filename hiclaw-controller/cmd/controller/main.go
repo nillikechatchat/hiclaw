@@ -12,10 +12,11 @@ import (
 	"github.com/hiclaw/hiclaw-controller/internal/apiserver"
 	"github.com/hiclaw/hiclaw-controller/internal/controller"
 	"github.com/hiclaw/hiclaw-controller/internal/executor"
+	"github.com/hiclaw/hiclaw-controller/internal/runtime"
 	"github.com/hiclaw/hiclaw-controller/internal/server"
 	"github.com/hiclaw/hiclaw-controller/internal/store"
 	"github.com/hiclaw/hiclaw-controller/internal/watcher"
-	"k8s.io/apimachinery/pkg/runtime"
+	runtime2 "k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -61,7 +62,7 @@ func main() {
 	}
 
 	// Build scheme
-	scheme := runtime.NewScheme()
+	scheme := runtime2.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	if err := v1beta1.AddToScheme(scheme); err != nil {
 		logger.Error(err, "failed to add hiclaw types to scheme")
@@ -71,6 +72,21 @@ func main() {
 	// Initialize executors
 	shell := executor.NewShell("/opt/hiclaw/agent/skills")
 	packages := executor.NewPackageResolver("/tmp/import")
+
+	// Initialize runtime registry with GenericRuntime for all supported types
+	runtimeRegistry := runtime.NewRuntimeRegistry()
+	genericRuntime := &runtime.GenericRuntime{
+		Executor: shell,
+		Packages: packages,
+	}
+	// Register GenericRuntime for all supported runtime types
+	// In the future, specialized runtimes (ZeroClaw, OpenFang) can replace these
+	runtimeRegistry.Register(runtime.RuntimeOpenClaw, genericRuntime)
+	runtimeRegistry.Register(runtime.RuntimeCoPaw, genericRuntime)
+	runtimeRegistry.Register(runtime.RuntimeFastClaw, genericRuntime)
+	runtimeRegistry.Register(runtime.RuntimeZeroClaw, genericRuntime)
+	runtimeRegistry.Register(runtime.RuntimeNanoClaw, genericRuntime)
+	runtimeRegistry.Register(runtime.RuntimeOpenFang, genericRuntime)
 
 	var mgr ctrl.Manager
 
@@ -149,10 +165,11 @@ func main() {
 	}
 
 	if err := (&controller.WorkerReconciler{
-		Client:   mgr.GetClient(),
-		Executor: shell,
-		Packages: packages,
-		Higress:  higressClient,
+		Client:          mgr.GetClient(),
+		Executor:        shell,
+		Packages:        packages,
+		Higress:         higressClient,
+		RuntimeRegistry: runtimeRegistry,
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "failed to setup WorkerReconciler")
 		os.Exit(1)

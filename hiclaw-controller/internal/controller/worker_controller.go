@@ -10,6 +10,7 @@ import (
 
 	v1beta1 "github.com/hiclaw/hiclaw-controller/api/v1beta1"
 	"github.com/hiclaw/hiclaw-controller/internal/executor"
+	"github.com/hiclaw/hiclaw-controller/internal/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -24,9 +25,10 @@ const (
 // WorkerReconciler reconciles Worker resources by calling existing bash scripts.
 type WorkerReconciler struct {
 	client.Client
-	Executor *executor.Shell
-	Packages *executor.PackageResolver
-	Higress  *HigressClient
+	Executor        *executor.Shell
+	Packages        *executor.PackageResolver
+	Higress         *HigressClient
+	RuntimeRegistry *runtime.RuntimeRegistry
 
 	// lastSpec tracks the last-processed spec per worker name (in memory).
 	// Used by handleUpdate to detect real spec changes via DeepEqual.
@@ -177,6 +179,12 @@ func (r *WorkerReconciler) handleCreate(ctx context.Context, w *v1beta1.Worker) 
 	if w.Spec.ChannelPolicy != nil {
 		if policyJSON, err := json.Marshal(w.Spec.ChannelPolicy); err == nil {
 			args = append(args, "--channel-policy", string(policyJSON))
+		}
+	}
+	// Add runtime-specific config
+	if w.Spec.RuntimeConfig != nil {
+		if configJSON, err := json.Marshal(w.Spec.RuntimeConfig); err == nil {
+			args = append(args, "--runtime-config", string(configJSON))
 		}
 	}
 

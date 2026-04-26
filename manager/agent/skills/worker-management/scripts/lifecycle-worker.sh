@@ -157,6 +157,41 @@ _worker_has_cron_jobs() {
     [ "$count" -gt 0 ]
 }
 
+# Determine the correct readiness wait function based on worker runtime.
+# Usage: _wait_worker_ready <worker_name> [timeout]
+_wait_worker_ready() {
+    local worker_name="$1"
+    local timeout="${2:-120}"
+    local runtime
+    runtime=$(jq -r --arg w "${worker_name}" '.workers[$w].runtime // "openclaw"' "${REGISTRY_FILE}" 2>/dev/null || echo "openclaw")
+
+    case "${runtime}" in
+        copaw)                                      container_wait_copaw_worker_ready "${worker_name}" "${timeout}" ;;
+        fastclaw|zeroclaw|nanoclaw|openfang)        container_wait_generic_worker_ready "${worker_name}" "${timeout}" ;;
+        *)                                          container_wait_worker_ready "${worker_name}" "${timeout}" ;;
+    esac
+}
+
+# Determine the correct container create function based on worker runtime.
+# Usage: _create_worker_by_runtime <worker_name> <fs_access_key> <fs_secret_key> [extra_env_json] [custom_image]
+_create_worker_by_runtime() {
+    local worker_name="$1"
+    local fs_access_key="$2"
+    local fs_secret_key="$3"
+    local extra_env="${4:-[]}"
+    local custom_image="${5:-}"
+    local runtime
+    runtime=$(jq -r --arg w "${worker_name}" '.workers[$w].runtime // "openclaw"' "${REGISTRY_FILE}" 2>/dev/null || echo "openclaw")
+
+    case "${runtime}" in
+        copaw)      container_create_copaw_worker "${worker_name}" "${fs_access_key}" "${fs_secret_key}" "${extra_env}" "${custom_image}" ;;
+        fastclaw)   container_create_fastclaw_worker "${worker_name}" "${fs_access_key}" "${fs_secret_key}" "${extra_env}" "${custom_image}" ;;
+        zeroclaw)   container_create_zeroclaw_worker "${worker_name}" "${fs_access_key}" "${fs_secret_key}" "${extra_env}" "${custom_image}" ;;
+        nanoclaw)   container_create_nanoclaw_worker "${worker_name}" "${fs_access_key}" "${fs_secret_key}" "${extra_env}" "${custom_image}" ;;
+        *)          container_create_worker "${worker_name}" "${fs_access_key}" "${fs_secret_key}" "${extra_env}" "${custom_image}" ;;
+    esac
+}
+
 # ─── Actions ─────────────────────────────────────────────────────────────────
 
 # Sync worker status into lifecycle file (Docker or cloud backend)
@@ -402,14 +437,8 @@ action_start() {
         if [ -f "$creds_file" ]; then
             source "$creds_file"
         fi
-        local runtime
-        runtime=$(jq -r --arg w "$worker" '.workers[$w].runtime // "openclaw"' "$REGISTRY_FILE" 2>/dev/null)
         if [ "$backend" = "docker" ]; then
-            if [ "$runtime" = "copaw" ]; then
-                container_create_copaw_worker "$worker" "$worker" "${WORKER_MINIO_PASSWORD:-}" 2>&1 && ok=true
-            else
-                container_create_worker "$worker" "$worker" "${WORKER_MINIO_PASSWORD:-}" 2>&1 && ok=true
-            fi
+            _create_worker_by_runtime "$worker" "$worker" "${WORKER_MINIO_PASSWORD:-}" 2>&1 && ok=true
         else
             worker_backend_create "$worker" "" "" "[]" 2>&1 && ok=true
         fi
@@ -462,17 +491,29 @@ action_ensure_ready() {
     _log "Worker $worker container_status=$status"
 
     if [ "$status" = "running" ]; then
-        echo "{\"worker\":\"$worker\",\"status\":\"ready\",\"container_status\":\"running\"}"
-        return 0
+        # Container is running, but verify the agent runtime is actually ready
+        if _wait_worker_ready "$worker" 30 2>/dev/null; then
+            echo "{\"worker\":\"$worker\",\"status\":\"ready\",\"container_status\":\"running\"}"
+            return 0
+        else
+            _log "Worker $worker container is running but agent not ready yet — will wait during start/recreate"
+        fi
     fi
 
     if [ "$status" = "not_found" ]; then
         _log "Worker $worker container not found — attempting recreate"
         _ensure_worker_entry "$worker"
         if action_start "$worker" 2>&1; then
-            _log "Worker $worker recreated successfully"
-            echo "{\"worker\":\"$worker\",\"status\":\"recreated\",\"container_status\":\"running\"}"
-            return 0
+            _log "Worker $worker recreated — waiting for agent readiness"
+            if _wait_worker_ready "$worker" 120; then
+                _log "Worker $worker recreated and agent ready"
+                echo "{\"worker\":\"$worker\",\"status\":\"recreated\",\"container_status\":\"running\"}"
+                return 0
+            else
+                _log "WARN: Worker $worker recreated but agent not ready within timeout"
+                echo "{\"worker\":\"$worker\",\"status\":\"recreated\",\"container_status\":\"running\",\"warning\":\"agent_not_ready_within_timeout\"}"
+                return 0
+            fi
         else
             _log "ERROR: Failed to recreate worker $worker"
             echo "{\"worker\":\"$worker\",\"status\":\"failed\",\"container_status\":\"not_found\",\"error\":\"recreate_failed\"}"
@@ -484,9 +525,16 @@ action_ensure_ready() {
     _log "Worker $worker is $status — starting"
     _ensure_worker_entry "$worker"
     if action_start "$worker" 2>&1; then
-        _log "Worker $worker started successfully"
-        echo "{\"worker\":\"$worker\",\"status\":\"started\",\"container_status\":\"running\"}"
-        return 0
+        _log "Worker $worker started — waiting for agent readiness"
+        if _wait_worker_ready "$worker" 120; then
+            _log "Worker $worker started and agent ready"
+            echo "{\"worker\":\"$worker\",\"status\":\"started\",\"container_status\":\"running\"}"
+            return 0
+        else
+            _log "WARN: Worker $worker started but agent not ready within timeout"
+            echo "{\"worker\":\"$worker\",\"status\":\"started\",\"container_status\":\"running\",\"warning\":\"agent_not_ready_within_timeout\"}"
+            return 0
+        fi
     else
         _log "ERROR: Failed to start worker $worker"
         echo "{\"worker\":\"$worker\",\"status\":\"failed\",\"container_status\":\"$status\",\"error\":\"start_failed\"}"

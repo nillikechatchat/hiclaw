@@ -1,0 +1,24 @@
+apiVersion: v2
+name: openfang-worker
+description: OpenFang - Enterprise-grade Rust AI Agent Worker for HiClaw
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - hiclaw
+  - ai-agent
+  - worker
+  - enterprise
+home: https://github.com/higress-group/hiclaw
+sources:
+  - https://github.com/higress-group/hiclaw
+
+dependencies:
+  - name: jaeger
+    version: "0.59.0"
+    repository: "https://jaegertracing.github.io/helm-charts"
+    condition: jaeger.enabled
+  - name: prometheus
+    version: "25.20.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: prometheus.enabled
