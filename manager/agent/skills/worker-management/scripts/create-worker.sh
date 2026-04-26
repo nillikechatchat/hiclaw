@@ -924,6 +924,11 @@ elif [ "${HICLAW_RUNTIME}" = "aliyun" ]; then
         if [ -z "${SAE_IMAGE}" ]; then
             _fail "HICLAW_SAE_NANOCLAW_WORKER_IMAGE not set (required for nanoclaw runtime on cloud)"
         fi
+    else
+        SAE_IMAGE="${HICLAW_SAE_WORKER_IMAGE:-}"
+        if [ -z "${SAE_IMAGE}" ]; then
+            _fail "HICLAW_SAE_WORKER_IMAGE not set (required for openclaw runtime on cloud)"
+        fi
     fi
 
     # Build complete SAE environment variables (Worker needs these to connect)
