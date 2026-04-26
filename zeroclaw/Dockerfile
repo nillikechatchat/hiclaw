@@ -27,21 +27,19 @@ COPY src ./src
 # Build the actual binary
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
-# Final stage: minimal runtime
-FROM scratch
+# Final stage: minimal runtime with shell support
+FROM alpine:3.19
+
+# Install ca-certificates and minio client (mc)
+RUN apk add --no-cache ca-certificates curl && \
+    curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc && \
+    chmod +x /usr/local/bin/mc
 
 # Copy the binary from builder
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/zeroclaw /zeroclaw
-
-# Copy CA certificates for HTTPS
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/zeroclaw /usr/local/bin/zeroclaw
 
 # Set working directory
 WORKDIR /root/zeroclaw-workspace
 
 # Set entrypoint
-ENTRYPOINT ["/zeroclaw"]
-
-# Health check (optional)
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-#     CMD zeroclaw --health || exit 1
+ENTRYPOINT ["zeroclaw"]

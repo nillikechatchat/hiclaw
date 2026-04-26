@@ -22,6 +22,9 @@ if [ -z "${CONTAINER_API_BASE}" ]; then
 fi
 WORKER_IMAGE="${HICLAW_WORKER_IMAGE:-hiclaw/worker-agent:latest}"
 COPAW_WORKER_IMAGE="${HICLAW_COPAW_WORKER_IMAGE:-hiclaw/copaw-worker:latest}"
+FASTCLAW_WORKER_IMAGE="${HICLAW_FASTCLAW_WORKER_IMAGE:-hiclaw/fastclaw-worker:latest}"
+ZEROCLAW_WORKER_IMAGE="${HICLAW_ZEROCLAW_WORKER_IMAGE:-hiclaw/zeroclaw-worker:latest}"
+NANOCLAW_WORKER_IMAGE="${HICLAW_NANOCLAW_WORKER_IMAGE:-hiclaw/nanoclaw-worker:latest}"
 WORKER_CONTAINER_PREFIX="hiclaw-worker-"
 
 _log() {
@@ -570,6 +573,284 @@ container_wait_copaw_worker_ready() {
     done
 
     _log "CoPaw Worker ${worker_name} did not become ready within ${timeout}s"
+    return 1
+}
+
+# Create and start a FastClaw Worker container
+# FastClaw is a lightweight Python AI Agent runtime.
+# Usage: container_create_fastclaw_worker <worker_name> [fs_access_key] [fs_secret_key] [extra_env_json] [custom_image]
+container_create_fastclaw_worker() {
+    local worker_name="$1"
+    local container_name="${WORKER_CONTAINER_PREFIX}${worker_name}"
+    local fs_endpoint="http://fs-local.hiclaw.io:8080"
+    local fs_access_key="${2:-${HICLAW_MINIO_USER:-${HICLAW_ADMIN_USER:-admin}}}"
+    local fs_secret_key="${3:-${HICLAW_MINIO_PASSWORD:-${HICLAW_ADMIN_PASSWORD:-admin}}}"
+    local extra_env="${4:-[]}"
+    local custom_image="${5:-}"
+    local image="${custom_image:-${FASTCLAW_WORKER_IMAGE}}"
+    local worker_home="/root/hiclaw-fs/agents/${worker_name}"
+
+    _log "Creating FastClaw Worker container: ${container_name}"
+    _log "  Image: ${image}"
+
+    if ! _ensure_image "${image}"; then
+        return 1
+    fi
+
+    local existing
+    existing=$(_api GET "/containers/${container_name}/json" 2>/dev/null)
+    if echo "${existing}" | grep -q '"Id"' 2>/dev/null; then
+        _log "Removing existing container: ${container_name}"
+        _api DELETE "/containers/${container_name}?force=true" > /dev/null 2>&1
+        sleep 1
+    fi
+
+    local base_env='["HOME='"${worker_home}"'","HICLAW_WORKER_NAME='"${worker_name}"'","HICLAW_FS_ENDPOINT='"${fs_endpoint}"'","HICLAW_FS_ACCESS_KEY='"${fs_access_key}"'","HICLAW_FS_SECRET_KEY='"${fs_secret_key}"'"]'
+
+    local all_env
+    if [ "${extra_env}" != "[]" ] && [ -n "${extra_env}" ]; then
+        all_env=$(echo "${base_env} ${extra_env}" | jq -s 'add')
+    else
+        all_env="${base_env}"
+    fi
+
+    local create_payload
+    create_payload=$(cat <<PAYLOAD
+{
+    "Image": "${image}",
+    "Env": ${all_env},
+    "WorkingDir": "${worker_home}",
+    "HostConfig": {"NetworkMode":"hiclaw-net"},
+    "NetworkingConfig": {
+        "EndpointsConfig": {
+            "hiclaw-net": {
+                "Aliases": ["${worker_name}.local"]
+            }
+        }
+    }
+}
+PAYLOAD
+)
+
+    local create_resp
+    create_resp=$(_api POST "/containers/create?name=${container_name}" "${create_payload}")
+    local container_id
+    container_id=$(echo "${create_resp}" | jq -r '.Id // empty' 2>/dev/null)
+
+    if [ -z "${container_id}" ]; then
+        _log "ERROR: Failed to create FastClaw container. Response: ${create_resp}"
+        return 1
+    fi
+
+    _log "FastClaw container created: ${container_id:0:12}"
+
+    local start_code
+    start_code=$(_api_code POST "/containers/${container_id}/start")
+    if [ "${start_code}" != "204" ] && [ "${start_code}" != "304" ]; then
+        _log "ERROR: Failed to start FastClaw container (HTTP ${start_code})"
+        return 1
+    fi
+
+    _log "FastClaw Worker container ${container_name} started successfully"
+    echo "${container_id}"
+    return 0
+}
+
+# Create and start a ZeroClaw Worker container
+# ZeroClaw is an ultra-lightweight Rust AI Agent runtime.
+# Usage: container_create_zeroclaw_worker <worker_name> [fs_access_key] [fs_secret_key] [extra_env_json] [custom_image]
+container_create_zeroclaw_worker() {
+    local worker_name="$1"
+    local container_name="${WORKER_CONTAINER_PREFIX}${worker_name}"
+    local fs_endpoint="http://fs-local.hiclaw.io:8080"
+    local fs_access_key="${2:-${HICLAW_MINIO_USER:-${HICLAW_ADMIN_USER:-admin}}}"
+    local fs_secret_key="${3:-${HICLAW_MINIO_PASSWORD:-${HICLAW_ADMIN_PASSWORD:-admin}}}"
+    local extra_env="${4:-[]}"
+    local custom_image="${5:-}"
+    local image="${custom_image:-${ZEROCLAW_WORKER_IMAGE}}"
+    local worker_home="/root/hiclaw-fs/agents/${worker_name}"
+
+    _log "Creating ZeroClaw Worker container: ${container_name}"
+    _log "  Image: ${image}"
+
+    if ! _ensure_image "${image}"; then
+        return 1
+    fi
+
+    local existing
+    existing=$(_api GET "/containers/${container_name}/json" 2>/dev/null)
+    if echo "${existing}" | grep -q '"Id"' 2>/dev/null; then
+        _log "Removing existing container: ${container_name}"
+        _api DELETE "/containers/${container_name}?force=true" > /dev/null 2>&1
+        sleep 1
+    fi
+
+    local base_env='["HOME='"${worker_home}"'","HICLAW_WORKER_NAME='"${worker_name}"'","HICLAW_FS_ENDPOINT='"${fs_endpoint}"'","HICLAW_FS_ACCESS_KEY='"${fs_access_key}"'","HICLAW_FS_SECRET_KEY='"${fs_secret_key}"'"]'
+
+    local all_env
+    if [ "${extra_env}" != "[]" ] && [ -n "${extra_env}" ]; then
+        all_env=$(echo "${base_env} ${extra_env}" | jq -s 'add')
+    else
+        all_env="${base_env}"
+    fi
+
+    local create_payload
+    create_payload=$(cat <<PAYLOAD
+{
+    "Image": "${image}",
+    "Env": ${all_env},
+    "WorkingDir": "${worker_home}",
+    "HostConfig": {"NetworkMode":"hiclaw-net"},
+    "NetworkingConfig": {
+        "EndpointsConfig": {
+            "hiclaw-net": {
+                "Aliases": ["${worker_name}.local"]
+            }
+        }
+    }
+}
+PAYLOAD
+)
+
+    local create_resp
+    create_resp=$(_api POST "/containers/create?name=${container_name}" "${create_payload}")
+    local container_id
+    container_id=$(echo "${create_resp}" | jq -r '.Id // empty' 2>/dev/null)
+
+    if [ -z "${container_id}" ]; then
+        _log "ERROR: Failed to create ZeroClaw container. Response: ${create_resp}"
+        return 1
+    fi
+
+    _log "ZeroClaw container created: ${container_id:0:12}"
+
+    local start_code
+    start_code=$(_api_code POST "/containers/${container_id}/start")
+    if [ "${start_code}" != "204" ] && [ "${start_code}" != "304" ]; then
+        _log "ERROR: Failed to start ZeroClaw container (HTTP ${start_code})"
+        return 1
+    fi
+
+    _log "ZeroClaw Worker container ${container_name} started successfully"
+    echo "${container_id}"
+    return 0
+}
+
+# Create and start a NanoClaw Worker container
+# NanoClaw is a minimal Node.js AI Agent runtime.
+# Usage: container_create_nanoclaw_worker <worker_name> [fs_access_key] [fs_secret_key] [extra_env_json] [custom_image]
+container_create_nanoclaw_worker() {
+    local worker_name="$1"
+    local container_name="${WORKER_CONTAINER_PREFIX}${worker_name}"
+    local fs_endpoint="http://fs-local.hiclaw.io:8080"
+    local fs_access_key="${2:-${HICLAW_MINIO_USER:-${HICLAW_ADMIN_USER:-admin}}}"
+    local fs_secret_key="${3:-${HICLAW_MINIO_PASSWORD:-${HICLAW_ADMIN_PASSWORD:-admin}}}"
+    local extra_env="${4:-[]}"
+    local custom_image="${5:-}"
+    local image="${custom_image:-${NANOCLAW_WORKER_IMAGE}}"
+    local worker_home="/root/hiclaw-fs/agents/${worker_name}"
+
+    _log "Creating NanoClaw Worker container: ${container_name}"
+    _log "  Image: ${image}"
+
+    if ! _ensure_image "${image}"; then
+        return 1
+    fi
+
+    local existing
+    existing=$(_api GET "/containers/${container_name}/json" 2>/dev/null)
+    if echo "${existing}" | grep -q '"Id"' 2>/dev/null; then
+        _log "Removing existing container: ${container_name}"
+        _api DELETE "/containers/${container_name}?force=true" > /dev/null 2>&1
+        sleep 1
+    fi
+
+    local base_env='["HOME='"${worker_home}"'","HICLAW_WORKER_NAME='"${worker_name}"'","HICLAW_FS_ENDPOINT='"${fs_endpoint}"'","HICLAW_FS_ACCESS_KEY='"${fs_access_key}"'","HICLAW_FS_SECRET_KEY='"${fs_secret_key}"'"]'
+
+    local all_env
+    if [ "${extra_env}" != "[]" ] && [ -n "${extra_env}" ]; then
+        all_env=$(echo "${base_env} ${extra_env}" | jq -s 'add')
+    else
+        all_env="${base_env}"
+    fi
+
+    local create_payload
+    create_payload=$(cat <<PAYLOAD
+{
+    "Image": "${image}",
+    "Env": ${all_env},
+    "WorkingDir": "${worker_home}",
+    "HostConfig": {"NetworkMode":"hiclaw-net"},
+    "NetworkingConfig": {
+        "EndpointsConfig": {
+            "hiclaw-net": {
+                "Aliases": ["${worker_name}.local"]
+            }
+        }
+    }
+}
+PAYLOAD
+)
+
+    local create_resp
+    create_resp=$(_api POST "/containers/create?name=${container_name}" "${create_payload}")
+    local container_id
+    container_id=$(echo "${create_resp}" | jq -r '.Id // empty' 2>/dev/null)
+
+    if [ -z "${container_id}" ]; then
+        _log "ERROR: Failed to create NanoClaw container. Response: ${create_resp}"
+        return 1
+    fi
+
+    _log "NanoClaw container created: ${container_id:0:12}"
+
+    local start_code
+    start_code=$(_api_code POST "/containers/${container_id}/start")
+    if [ "${start_code}" != "204" ] && [ "${start_code}" != "304" ]; then
+        _log "ERROR: Failed to start NanoClaw container (HTTP ${start_code})"
+        return 1
+    fi
+
+    _log "NanoClaw Worker container ${container_name} started successfully"
+    echo "${container_id}"
+    return 0
+}
+
+# Wait for a generic Worker (non-openclaw) to become ready
+# Checks that the container is running and responsive.
+# Usage: container_wait_generic_worker_ready <worker_name> [timeout_seconds]
+container_wait_generic_worker_ready() {
+    local worker_name="$1"
+    local timeout="${2:-120}"
+    local elapsed=0
+
+    _log "Waiting for Worker ${worker_name} to be ready (timeout: ${timeout}s)..."
+
+    while [ "${elapsed}" -lt "${timeout}" ]; do
+        local cstatus
+        cstatus=$(container_status_worker "${worker_name}")
+        if [ "${cstatus}" != "running" ]; then
+            _log "Worker container ${worker_name} stopped unexpectedly (status: ${cstatus})"
+            return 1
+        fi
+
+        # For generic workers, check that the process has been running for at least 5s
+        # This is a simple readiness check - individual runtimes may override with their own
+        local inspect
+        inspect=$(_api GET "/containers/${WORKER_CONTAINER_PREFIX}${worker_name}/json" 2>/dev/null)
+        local started_at
+        started_at=$(echo "${inspect}" | jq -r '.State.StartedAt // empty' 2>/dev/null)
+        if [ -n "${started_at}" ]; then
+            _log "Worker ${worker_name} is ready (started at: ${started_at})"
+            return 0
+        fi
+
+        sleep 5
+        elapsed=$((elapsed + 5))
+        _log "Waiting for Worker ${worker_name}... (${elapsed}s/${timeout}s)"
+    done
+
+    _log "Worker ${worker_name} did not become ready within ${timeout}s"
     return 1
 }
 

@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use anyhow::{Context, Result};
+use std::env;
 
 /// Worker configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,10 +23,13 @@ pub struct WorkerConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatrixConfig {
     /// Homeserver URL
+    #[serde(default)]
     pub homeserver_url: String,
     /// Access token for authentication
+    #[serde(default)]
     pub access_token: String,
     /// Username
+    #[serde(default)]
     pub username: String,
 }
 
@@ -33,8 +37,10 @@ pub struct MatrixConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HigressConfig {
     /// Gateway base URL
+    #[serde(default = "default_higress_base_url")]
     pub base_url: String,
     /// Consumer token for authentication
+    #[serde(default)]
     pub consumer_token: String,
 }
 
@@ -42,7 +48,12 @@ pub struct HigressConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillsConfig {
     /// Enabled skills
+    #[serde(default)]
     pub enabled: Vec<String>,
+}
+
+fn default_higress_base_url() -> String {
+    "http://127.0.0.1:8080".to_string()
 }
 
 impl Default for WorkerConfig {
@@ -68,7 +79,7 @@ impl Default for MatrixConfig {
 impl Default for HigressConfig {
     fn default() -> Self {
         Self {
-            base_url: "http://127.0.0.1:8080".to_string(),
+            base_url: default_higress_base_url(),
             consumer_token: String::new(),
         }
     }
@@ -82,20 +93,58 @@ impl Default for SkillsConfig {
     }
 }
 
+fn resolve_worker_name() -> String {
+    env::var("HICLAW_WORKER_NAME")
+        .or_else(|_| env::var("WORKER_NAME"))
+        .unwrap_or_else(|_| "zeroclaw-worker".to_string())
+}
+
 impl WorkerConfig {
-    /// Load configuration from file
+    /// Load configuration from file, with environment variable fallbacks
     pub fn load() -> Result<Self> {
-        let config_path = Path::new("/root/hiclaw-fs/agents/zeroclaw.json");
-        
-        if !config_path.exists() {
-            anyhow::bail!("Config file not found: {:?}", config_path);
+        let worker_name = resolve_worker_name();
+        let config_path = Path::new(&format!(
+            "/root/hiclaw-fs/agents/{}/zeroclaw.json",
+            worker_name
+        ));
+
+        let mut config = if config_path.exists() {
+            let config_str = std::fs::read_to_string(config_path)
+                .context("Failed to read config file")?;
+            serde_json::from_str(&config_str)
+                .context("Failed to parse config JSON")?
+        } else {
+            WorkerConfig::default()
+        };
+
+        // Environment variable fallbacks for Matrix config
+        if config.matrix.homeserver_url.is_empty() {
+            if let Ok(v) = env::var("HICLAW_MATRIX_URL") {
+                config.matrix.homeserver_url = v;
+            }
+        }
+        if config.matrix.access_token.is_empty() {
+            if let Ok(v) = env::var("HICLAW_WORKER_MATRIX_TOKEN") {
+                config.matrix.access_token = v;
+            }
+        }
+        if config.matrix.username.is_empty() {
+            if let Ok(v) = env::var("HICLAW_WORKER_NAME").or_else(|_| env::var("WORKER_NAME")) {
+                config.matrix.username = v;
+            }
         }
 
-        let config_str = std::fs::read_to_string(config_path)
-            .context("Failed to read config file")?;
-        
-        let config: WorkerConfig = serde_json::from_str(&config_str)
-            .context("Failed to parse config JSON")?;
+        // Environment variable fallbacks for Higress config
+        if config.higress.base_url.is_empty() || config.higress.base_url == default_higress_base_url() {
+            if let Ok(v) = env::var("HICLAW_AI_GATEWAY_URL") {
+                config.higress.base_url = v;
+            }
+        }
+        if config.higress.consumer_token.is_empty() {
+            if let Ok(v) = env::var("HICLAW_WORKER_GATEWAY_KEY") {
+                config.higress.consumer_token = v;
+            }
+        }
 
         Ok(config)
     }

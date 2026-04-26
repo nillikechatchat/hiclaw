@@ -21,15 +21,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Configuration
-const WORKER_NAME = process.env.WORKER_NAME || 'nanoclaw-worker';
-const LLM_MODEL = process.env.LLM_MODEL || 'claude-sonnet-4-6';
-const RUNTIME_CONFIG = JSON.parse(process.env.RUNTIME_CONFIG || '{}');
+const WORKER_NAME = process.env.HICLAW_WORKER_NAME || process.env.WORKER_NAME || 'nanoclaw-worker';
+const LLM_MODEL = process.env.HICLAW_DEFAULT_MODEL || process.env.LLM_MODEL || 'qwen3.5-plus';
+const RUNTIME_CONFIG = JSON.parse(process.env.HICLAW_RUNTIME_CONFIG || process.env.RUNTIME_CONFIG || '{}');
 const MINIO_FS_DIR = process.env.MINIO_FS_DIR || '/root/hiclaw-fs';
 const AGENT_DIR = join(MINIO_FS_DIR, 'agents', WORKER_NAME);
-
-// Runtime config defaults
-const CONTAINER_TIMEOUT = RUNTIME_CONFIG.nanoclaw?.containerTimeout || 300; // 5 minutes
-const CHANNEL = RUNTIME_CONFIG.nanoclaw?.channel || 'matrix';
 
 /**
  * NanoClaw Worker class
@@ -79,12 +75,30 @@ class NanoClawWorker {
    * Load worker configuration
    */
   async loadConfig() {
-    const configPath = join(AGENT_DIR, 'openclaw.json');
+    const nanoclawConfigPath = join(AGENT_DIR, 'nanoclaw.json');
+    const openclawConfigPath = join(AGENT_DIR, 'openclaw.json');
+    let configPath = null;
     try {
-      const configStr = await fs.readFile(configPath, 'utf-8');
-      this.config = JSON.parse(configStr);
-      console.log(`[NanoClaw] Configuration loaded from ${configPath}`);
-    } catch (error) {
+      await fs.access(nanoclawConfigPath);
+      configPath = nanoclawConfigPath;
+    } catch {
+      try {
+        await fs.access(openclawConfigPath);
+        configPath = openclawConfigPath;
+      } catch {
+        // no config file found
+      }
+    }
+    if (configPath) {
+      try {
+        const configStr = await fs.readFile(configPath, 'utf-8');
+        this.config = JSON.parse(configStr);
+        console.log(`[NanoClaw] Configuration loaded from ${configPath}`);
+      } catch (error) {
+        console.warn(`[NanoClaw] Failed to parse config file ${configPath}:`, error.message);
+        this.config = {};
+      }
+    } else {
       console.warn(`[NanoClaw] Config file not found, using defaults`);
       this.config = {};
     }
@@ -115,8 +129,8 @@ class NanoClawWorker {
    * Initialize Matrix client
    */
   async initMatrixClient() {
-    const homeserverUrl = this.config.homeserverUrl || process.env.MATRIX_HOMESERVER_URL;
-    const accessToken = this.config.accessToken || process.env.MATRIX_ACCESS_TOKEN;
+    const homeserverUrl = this.config.homeserverUrl || process.env.HICLAW_MATRIX_URL || process.env.MATRIX_HOMESERVER_URL;
+    const accessToken = this.config.accessToken || process.env.HICLAW_WORKER_MATRIX_TOKEN || process.env.MATRIX_ACCESS_TOKEN;
     const userId = this.config.userId || `@${this.name}:hiclaw.io`;
 
     if (!homeserverUrl || !accessToken) {
@@ -137,8 +151,8 @@ class NanoClawWorker {
    * Initialize Higress client
    */
   initHigressClient() {
-    const baseUrl = process.env.HIGRESS_URL || 'http://127.0.0.1:8080';
-    const token = process.env.HIGRESS_TOKEN;
+    const baseUrl = process.env.HICLAW_AI_GATEWAY_URL || process.env.HIGRESS_URL || 'http://127.0.0.1:8080';
+    const token = process.env.HICLAW_WORKER_GATEWAY_KEY || process.env.HIGRESS_TOKEN;
 
     this.higressClient = axios.create({
       baseURL: baseUrl,
@@ -183,13 +197,7 @@ class NanoClawWorker {
    * Run the worker
    */
   async run() {
-    console.log(`[NanoClaw] Starting event loop (timeout: ${CONTAINER_TIMEOUT}s)`);
-
-    // Set up container timeout
-    const timeoutId = setTimeout(() => {
-      console.log(`[NanoClaw] Container timeout reached, shutting down`);
-      process.exit(0);
-    }, CONTAINER_TIMEOUT * 1000);
+    console.log(`[NanoClaw] Starting event loop`);
 
     // Keep alive
     const keepAlive = setInterval(() => {
@@ -197,8 +205,8 @@ class NanoClawWorker {
     }, 30000);
 
     // Handle graceful shutdown
-    process.on('SIGINT', () => this.shutdown(keepAlive, timeoutId));
-    process.on('SIGTERM', () => this.shutdown(keepAlive, timeoutId));
+    process.on('SIGINT', () => this.shutdown(keepAlive));
+    process.on('SIGTERM', () => this.shutdown(keepAlive));
 
     // Note: In production, would listen for Matrix events here
   }
@@ -206,11 +214,10 @@ class NanoClawWorker {
   /**
    * Gracefully shutdown
    */
-  async shutdown(keepAlive, timeoutId) {
+  async shutdown(keepAlive) {
     console.log(`[NanoClaw] Shutting down...`);
-    
+
     clearInterval(keepAlive);
-    clearTimeout(timeoutId);
 
     if (this.matrixClient) {
       await this.matrixClient.stopClient();

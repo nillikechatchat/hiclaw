@@ -29,6 +29,9 @@ MANAGER_ALIYUN_IMAGE ?= $(REGISTRY)/$(REPO)/hiclaw-manager-aliyun
 MANAGER_COPAW_IMAGE  ?= $(REGISTRY)/$(REPO)/hiclaw-manager-copaw
 WORKER_IMAGE         ?= $(REGISTRY)/$(REPO)/hiclaw-worker
 COPAW_WORKER_IMAGE   ?= $(REGISTRY)/$(REPO)/hiclaw-copaw-worker
+FASTCLAW_WORKER_IMAGE ?= $(REGISTRY)/$(REPO)/hiclaw-fastclaw-worker
+ZEROCLAW_WORKER_IMAGE ?= $(REGISTRY)/$(REPO)/hiclaw-zeroclaw-worker
+NANOCLAW_WORKER_IMAGE ?= $(REGISTRY)/$(REPO)/hiclaw-nanoclaw-worker
 DOCKER_PROXY_IMAGE   ?= $(REGISTRY)/$(REPO)/hiclaw-docker-proxy
 OPENCLAW_BASE_IMAGE  ?= $(REGISTRY)/$(REPO)/openclaw-base
 CONTROLLER_IMAGE     ?= $(REGISTRY)/$(REPO)/hiclaw-controller
@@ -38,6 +41,9 @@ MANAGER_ALIYUN_TAG ?= $(MANAGER_ALIYUN_IMAGE):$(VERSION)
 MANAGER_COPAW_TAG  ?= $(MANAGER_COPAW_IMAGE):$(VERSION)
 WORKER_TAG         ?= $(WORKER_IMAGE):$(VERSION)
 COPAW_WORKER_TAG   ?= $(COPAW_WORKER_IMAGE):$(VERSION)
+FASTCLAW_WORKER_TAG ?= $(FASTCLAW_WORKER_IMAGE):$(VERSION)
+ZEROCLAW_WORKER_TAG ?= $(ZEROCLAW_WORKER_IMAGE):$(VERSION)
+NANOCLAW_WORKER_TAG ?= $(NANOCLAW_WORKER_IMAGE):$(VERSION)
 DOCKER_PROXY_TAG   ?= $(DOCKER_PROXY_IMAGE):$(VERSION)
 OPENCLAW_BASE_TAG  ?= $(OPENCLAW_BASE_IMAGE):$(VERSION)
 CONTROLLER_TAG     ?= $(CONTROLLER_IMAGE):$(VERSION)
@@ -48,6 +54,9 @@ LOCAL_MANAGER_ALIYUN = hiclaw/manager-aliyun:$(VERSION)
 LOCAL_MANAGER_COPAW  = hiclaw/manager-copaw:$(VERSION)
 LOCAL_WORKER         = hiclaw/worker-agent:$(VERSION)
 LOCAL_COPAW_WORKER   = hiclaw/copaw-worker:$(VERSION)
+LOCAL_FASTCLAW_WORKER = hiclaw/fastclaw-worker:$(VERSION)
+LOCAL_ZEROCLAW_WORKER = hiclaw/zeroclaw-worker:$(VERSION)
+LOCAL_NANOCLAW_WORKER = hiclaw/nanoclaw-worker:$(VERSION)
 LOCAL_DOCKER_PROXY   = hiclaw/docker-proxy:$(VERSION)
 LOCAL_OPENCLAW_BASE  = hiclaw/openclaw-base:$(VERSION)
 LOCAL_CONTROLLER     = hiclaw/hiclaw-controller:$(VERSION)
@@ -101,9 +110,9 @@ LINES          ?= 50
 
 # ---------- Phony targets ----------
 
-.PHONY: all build build-openclaw-base build-hiclaw-controller build-manager build-manager-aliyun build-manager-copaw build-worker build-copaw-worker build-docker-proxy \
-        tag push push-openclaw-base push-hiclaw-controller push-manager push-manager-aliyun push-manager-copaw push-worker push-copaw-worker push-docker-proxy \
-        push-native push-native-manager push-native-manager-copaw push-native-worker push-native-copaw-worker \
+.PHONY: all build build-openclaw-base build-hiclaw-controller build-manager build-manager-aliyun build-manager-copaw build-worker build-copaw-worker build-fastclaw-worker build-zeroclaw-worker build-nanoclaw-worker build-docker-proxy \
+        tag push push-openclaw-base push-hiclaw-controller push-manager push-manager-aliyun push-manager-copaw push-worker push-copaw-worker push-fastclaw-worker push-zeroclaw-worker push-nanoclaw-worker push-docker-proxy \
+        push-native push-native-manager push-native-manager-copaw push-native-worker push-native-copaw-worker push-native-fastclaw-worker push-native-zeroclaw-worker push-native-nanoclaw-worker \
         buildx-setup \
         test test-quick test-installed \
         install uninstall replay replay-log \
@@ -117,7 +126,7 @@ all: build
 
 # ---------- Build ----------
 
-build: build-manager build-manager-aliyun build-manager-copaw build-worker build-copaw-worker build-docker-proxy ## Build all images (base image pulled from registry, not rebuilt locally)
+build: build-manager build-manager-aliyun build-manager-copaw build-worker build-copaw-worker build-fastclaw-worker build-zeroclaw-worker build-nanoclaw-worker build-docker-proxy ## Build all images (base image pulled from registry, not rebuilt locally)
 
 build-openclaw-base: ## Build OpenClaw base image
 	@echo "==> Building OpenClaw base image: $(LOCAL_OPENCLAW_BASE) (registry: $(HIGRESS_REGISTRY))"
@@ -172,6 +181,24 @@ build-copaw-worker: ## Build CoPaw Worker image
 		-t $(LOCAL_COPAW_WORKER) \
 		./copaw/
 
+build-fastclaw-worker: ## Build FastClaw Worker image
+	@echo "==> Building FastClaw Worker image: $(LOCAL_FASTCLAW_WORKER) (registry: $(HIGRESS_REGISTRY))"
+	docker build $(PLATFORM_FLAG) $(DOCKER_BUILD_ARGS) \
+		-t $(LOCAL_FASTCLAW_WORKER) \
+		./fastclaw/
+
+build-zeroclaw-worker: ## Build ZeroClaw Worker image
+	@echo "==> Building ZeroClaw Worker image: $(LOCAL_ZEROCLAW_WORKER) (registry: $(HIGRESS_REGISTRY))"
+	docker build $(PLATFORM_FLAG) $(DOCKER_BUILD_ARGS) \
+		-t $(LOCAL_ZEROCLAW_WORKER) \
+		./zeroclaw/
+
+build-nanoclaw-worker: ## Build NanoClaw Worker image
+	@echo "==> Building NanoClaw Worker image: $(LOCAL_NANOCLAW_WORKER) (registry: $(HIGRESS_REGISTRY))"
+	docker build $(PLATFORM_FLAG) $(DOCKER_BUILD_ARGS) \
+		-t $(LOCAL_NANOCLAW_WORKER) \
+		./nanoclaw/
+
 build-docker-proxy: ## Build Docker API proxy image
 	@echo "==> Building Docker Proxy image: $(LOCAL_DOCKER_PROXY)"
 	docker build $(PLATFORM_FLAG) $(REGISTRY_ARG) $(DOCKER_BUILD_ARGS) \
@@ -185,12 +212,18 @@ tag: build ## Tag images for registry push
 	docker tag $(LOCAL_MANAGER_ALIYUN) $(MANAGER_ALIYUN_TAG)
 	docker tag $(LOCAL_WORKER) $(WORKER_TAG)
 	docker tag $(LOCAL_COPAW_WORKER) $(COPAW_WORKER_TAG)
+	docker tag $(LOCAL_FASTCLAW_WORKER) $(FASTCLAW_WORKER_TAG)
+	docker tag $(LOCAL_ZEROCLAW_WORKER) $(ZEROCLAW_WORKER_TAG)
+	docker tag $(LOCAL_NANOCLAW_WORKER) $(NANOCLAW_WORKER_TAG)
 	docker tag $(LOCAL_DOCKER_PROXY) $(DOCKER_PROXY_TAG)
 ifeq ($(PUSH_LATEST),yes)
 	docker tag $(LOCAL_MANAGER) $(MANAGER_IMAGE):latest
 	docker tag $(LOCAL_MANAGER_ALIYUN) $(MANAGER_ALIYUN_IMAGE):latest
 	docker tag $(LOCAL_WORKER) $(WORKER_IMAGE):latest
 	docker tag $(LOCAL_COPAW_WORKER) $(COPAW_WORKER_IMAGE):latest
+	docker tag $(LOCAL_FASTCLAW_WORKER) $(FASTCLAW_WORKER_IMAGE):latest
+	docker tag $(LOCAL_ZEROCLAW_WORKER) $(ZEROCLAW_WORKER_IMAGE):latest
+	docker tag $(LOCAL_NANOCLAW_WORKER) $(NANOCLAW_WORKER_IMAGE):latest
 	docker tag $(LOCAL_DOCKER_PROXY) $(DOCKER_PROXY_IMAGE):latest
 	@echo "==> Images tagged as $(VERSION) and latest"
 else
@@ -403,6 +436,81 @@ else
 		./copaw/
 endif
 
+push-fastclaw-worker: buildx-setup ## Build + push multi-arch FastClaw Worker image
+	@echo "==> Building + pushing multi-arch FastClaw Worker: $(FASTCLAW_WORKER_TAG) [$(MULTIARCH_PLATFORMS)]"
+ifeq ($(IS_PODMAN),1)
+	-podman manifest rm $(FASTCLAW_WORKER_TAG) 2>/dev/null
+	$(foreach plat,$(subst $(comma), ,$(MULTIARCH_PLATFORMS)), \
+		echo "  -> Building FastClaw Worker for $(plat)..." && \
+		podman build --platform $(plat) \
+			$(DOCKER_BUILD_ARGS) \
+			--manifest $(FASTCLAW_WORKER_TAG) \
+			./fastclaw/ && ) true
+	podman manifest push --all $(FASTCLAW_WORKER_TAG) docker://$(FASTCLAW_WORKER_TAG)
+	$(if $(PUSH_LATEST), \
+		podman manifest push --all $(FASTCLAW_WORKER_TAG) docker://$(FASTCLAW_WORKER_IMAGE):latest && \
+		echo "  -> Also pushed :latest tag")
+else
+	docker buildx build \
+		--builder $(BUILDX_BUILDER) \
+		--platform $(MULTIARCH_PLATFORMS) \
+		$(DOCKER_BUILD_ARGS) \
+		-t $(FASTCLAW_WORKER_TAG) \
+		$(if $(PUSH_LATEST),-t $(FASTCLAW_WORKER_IMAGE):latest) \
+		--push \
+		./fastclaw/
+endif
+
+push-zeroclaw-worker: buildx-setup ## Build + push multi-arch ZeroClaw Worker image
+	@echo "==> Building + pushing multi-arch ZeroClaw Worker: $(ZEROCLAW_WORKER_TAG) [$(MULTIARCH_PLATFORMS)]"
+ifeq ($(IS_PODMAN),1)
+	-podman manifest rm $(ZEROCLAW_WORKER_TAG) 2>/dev/null
+	$(foreach plat,$(subst $(comma), ,$(MULTIARCH_PLATFORMS)), \
+		echo "  -> Building ZeroClaw Worker for $(plat)..." && \
+		podman build --platform $(plat) \
+			$(DOCKER_BUILD_ARGS) \
+			--manifest $(ZEROCLAW_WORKER_TAG) \
+			./zeroclaw/ && ) true
+	podman manifest push --all $(ZEROCLAW_WORKER_TAG) docker://$(ZEROCLAW_WORKER_TAG)
+	$(if $(PUSH_LATEST), \
+		podman manifest push --all $(ZEROCLAW_WORKER_TAG) docker://$(ZEROCLAW_WORKER_IMAGE):latest && \
+		echo "  -> Also pushed :latest tag")
+else
+	docker buildx build \
+		--builder $(BUILDX_BUILDER) \
+		--platform $(MULTIARCH_PLATFORMS) \
+		$(DOCKER_BUILD_ARGS) \
+		-t $(ZEROCLAW_WORKER_TAG) \
+		$(if $(PUSH_LATEST),-t $(ZEROCLAW_WORKER_IMAGE):latest) \
+		--push \
+		./zeroclaw/
+endif
+
+push-nanoclaw-worker: buildx-setup ## Build + push multi-arch NanoClaw Worker image
+	@echo "==> Building + pushing multi-arch NanoClaw Worker: $(NANOCLAW_WORKER_TAG) [$(MULTIARCH_PLATFORMS)]"
+ifeq ($(IS_PODMAN),1)
+	-podman manifest rm $(NANOCLAW_WORKER_TAG) 2>/dev/null
+	$(foreach plat,$(subst $(comma), ,$(MULTIARCH_PLATFORMS)), \
+		echo "  -> Building NanoClaw Worker for $(plat)..." && \
+		podman build --platform $(plat) \
+			$(DOCKER_BUILD_ARGS) \
+			--manifest $(NANOCLAW_WORKER_TAG) \
+			./nanoclaw/ && ) true
+	podman manifest push --all $(NANOCLAW_WORKER_TAG) docker://$(NANOCLAW_WORKER_TAG)
+	$(if $(PUSH_LATEST), \
+		podman manifest push --all $(NANOCLAW_WORKER_TAG) docker://$(NANOCLAW_WORKER_IMAGE):latest && \
+		echo "  -> Also pushed :latest tag")
+else
+	docker buildx build \
+		--builder $(BUILDX_BUILDER) \
+		--platform $(MULTIARCH_PLATFORMS) \
+		$(DOCKER_BUILD_ARGS) \
+		-t $(NANOCLAW_WORKER_TAG) \
+		$(if $(PUSH_LATEST),-t $(NANOCLAW_WORKER_IMAGE):latest) \
+		--push \
+		./nanoclaw/
+endif
+
 push-docker-proxy: buildx-setup ## Build + push multi-arch Docker Proxy image
 	@echo "==> Building + pushing multi-arch Docker Proxy: $(DOCKER_PROXY_TAG) [$(MULTIARCH_PLATFORMS)]"
 ifeq ($(IS_PODMAN),1)
@@ -461,6 +569,18 @@ push-native-worker: build-worker ## Push native-arch Worker only (dev)
 push-native-copaw-worker: build-copaw-worker ## Push native-arch CoPaw Worker only (dev)
 	docker tag $(LOCAL_COPAW_WORKER) $(COPAW_WORKER_TAG)
 	docker push $(COPAW_WORKER_TAG)
+
+push-native-fastclaw-worker: build-fastclaw-worker ## Push native-arch FastClaw Worker only (dev)
+	docker tag $(LOCAL_FASTCLAW_WORKER) $(FASTCLAW_WORKER_TAG)
+	docker push $(FASTCLAW_WORKER_TAG)
+
+push-native-zeroclaw-worker: build-zeroclaw-worker ## Push native-arch ZeroClaw Worker only (dev)
+	docker tag $(LOCAL_ZEROCLAW_WORKER) $(ZEROCLAW_WORKER_TAG)
+	docker push $(ZEROCLAW_WORKER_TAG)
+
+push-native-nanoclaw-worker: build-nanoclaw-worker ## Push native-arch NanoClaw Worker only (dev)
+	docker tag $(LOCAL_NANOCLAW_WORKER) $(NANOCLAW_WORKER_TAG)
+	docker push $(NANOCLAW_WORKER_TAG)
 
 # ---------- Test ----------
 

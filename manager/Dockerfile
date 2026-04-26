@@ -106,7 +106,11 @@ ARG BUILTIN_VERSION=latest
 RUN echo "${BUILTIN_VERSION}" > /opt/hiclaw/agent/.builtin-version \
     && find /opt/hiclaw/agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true \
     && find /opt/hiclaw/agent/worker-skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true \
-    && find /opt/hiclaw/agent/worker-agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+    && find /opt/hiclaw/agent/worker-agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true \
+    && find /opt/hiclaw/agent/copaw-worker-agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true \
+    && find /opt/hiclaw/agent/fastclaw-worker-agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true \
+    && find /opt/hiclaw/agent/zeroclaw-worker-agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true \
+    && find /opt/hiclaw/agent/nanoclaw-worker-agent/skills/*/scripts -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
 
 # ---- Ports ----
 # 8080: Higress Gateway (unified entry point)

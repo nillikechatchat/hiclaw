@@ -5,14 +5,18 @@ set -e
 
 echo "Starting NanoClaw worker..."
 
+# Resolve env vars with HiClaw conventions (HICLAW_* takes priority, fallback to legacy names)
+WORKER_NAME="${HICLAW_WORKER_NAME:-${WORKER_NAME:-}}"
+LLM_MODEL="${HICLAW_DEFAULT_MODEL:-${LLM_MODEL:-}}"
+
 # Validate required environment variables
 if [ -z "$WORKER_NAME" ]; then
-    echo "ERROR: WORKER_NAME environment variable is required"
+    echo "ERROR: HICLAW_WORKER_NAME (or WORKER_NAME) environment variable is required"
     exit 1
 fi
 
 if [ -z "$LLM_MODEL" ]; then
-    echo "ERROR: LLM_MODEL environment variable is required"
+    echo "ERROR: HICLAW_DEFAULT_MODEL (or LLM_MODEL) environment variable is required"
     exit 1
 fi
 
@@ -20,8 +24,19 @@ fi
 export WORKER_NAME
 export LLM_MODEL
 
+# Propagate HiClaw env vars so Node.js can read them
+export HICLAW_WORKER_NAME="${WORKER_NAME}"
+export HICLAW_DEFAULT_MODEL="${LLM_MODEL}"
+
+# Propagate runtime config
+if [ -n "${HICLAW_RUNTIME_CONFIG:-}" ]; then
+    export RUNTIME_CONFIG="${HICLAW_RUNTIME_CONFIG}"
+elif [ -n "${RUNTIME_CONFIG:-}" ]; then
+    export HICLAW_RUNTIME_CONFIG="${RUNTIME_CONFIG}"
+fi
+
 # Check runtime config
-if [ -n "$RUNTIME_CONFIG" ]; then
+if [ -n "${RUNTIME_CONFIG:-}" ]; then
     echo "Runtime config: $RUNTIME_CONFIG"
 fi
 

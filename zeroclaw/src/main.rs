@@ -7,10 +7,9 @@
 //! - High concurrency support (up to 10,000 concurrent tasks)
 
 use anyhow::{Context, Result};
-use matrix_sdk::{Client, ClientBuilder, config::StoreConfig, ruma::api::client::matrix::versions};
+use matrix_sdk::{Client, config::StoreConfig};
 use serde::{Deserialize, Serialize};
 use std::{env, sync::Arc, time::Duration};
-use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 mod config;
@@ -21,6 +20,7 @@ mod skills;
 use config::WorkerConfig;
 use matrix::MatrixHandler;
 use higress::HigressClient;
+use skills::SkillsManager;
 
 /// ZeroClaw Worker instance
 pub struct Worker {
@@ -36,6 +36,8 @@ pub struct Worker {
     higress_client: HigressClient,
     /// Worker configuration
     config: WorkerConfig,
+    /// Skills manager
+    skills_manager: SkillsManager,
 }
 
 /// Runtime configuration for ZeroClaw
@@ -66,6 +68,10 @@ impl Worker {
     /// Create a new ZeroClaw Worker
     pub fn new(name: String, model: String, runtime_config: RuntimeConfig) -> Self {
         let config = WorkerConfig::load().unwrap_or_default();
+        let skills_dir = std::path::PathBuf::from(format!(
+            "/root/hiclaw-fs/agents/{}/skills",
+            name
+        ));
         
         Self {
             name,
@@ -74,6 +80,7 @@ impl Worker {
             matrix_client: None,
             higress_client: HigressClient::new(),
             config,
+            skills_manager: SkillsManager::new(skills_dir),
         }
     }
 
@@ -128,18 +135,16 @@ impl Worker {
 
     /// Load skills from skills directory
     async fn load_skills(&self) -> Result<()> {
-        let skills_dir = std::path::PathBuf::from(format!(
-            "/root/hiclaw-fs/agents/{}/skills",
-            self.name
-        ));
-
-        if !skills_dir.exists() {
-            warn!("Skills directory not found: {:?}", skills_dir);
-            return Ok(());
+        if let Err(e) = self.skills_manager.scan() {
+            warn!("Failed to scan skills: {}", e);
+        } else {
+            let skills = self.skills_manager.list_skills();
+            if skills.is_empty() {
+                info!("No skills loaded");
+            } else {
+                info!("Loaded skills: {:?}", skills);
+            }
         }
-
-        info!("Loading skills from {:?}", skills_dir);
-        // In production, would load and register skills here
         Ok(())
     }
 
@@ -201,12 +206,18 @@ async fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_env("LOG_LEVEL"))
         .init();
 
-    // Read environment variables
-    let worker_name = env::var("WORKER_NAME").unwrap_or_else(|_| "zeroclaw-worker".to_string());
-    let model = env::var("LLM_MODEL").unwrap_or_else(|_| "claude-sonnet-4-6".to_string());
+    // Read environment variables with HICLAW_ prefix fallbacks
+    let worker_name = env::var("HICLAW_WORKER_NAME")
+        .or_else(|_| env::var("WORKER_NAME"))
+        .unwrap_or_else(|_| "zeroclaw-worker".to_string());
+    let model = env::var("HICLAW_DEFAULT_MODEL")
+        .or_else(|_| env::var("LLM_MODEL"))
+        .unwrap_or_else(|_| "claude-sonnet-4-6".to_string());
     
     // Parse runtime config
-    let runtime_config_str = env::var("RUNTIME_CONFIG").unwrap_or_else(|_| "{}".to_string());
+    let runtime_config_str = env::var("HICLAW_RUNTIME_CONFIG")
+        .or_else(|_| env::var("RUNTIME_CONFIG"))
+        .unwrap_or_else(|_| "{}".to_string());
     let runtime_config: RuntimeConfig = serde_json::from_str(&runtime_config_str)
         .unwrap_or_else(|e| {
             warn!("Failed to parse RUNTIME_CONFIG: {}, using defaults", e);

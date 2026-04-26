@@ -24,8 +24,11 @@
 #   HICLAW_VERSION            Image tag            (default: latest)
 #   HICLAW_REGISTRY           Image registry       (default: auto-detected by timezone)
 #   HICLAW_INSTALL_MANAGER_IMAGE       Override manager image (e.g., local build)
-#   HICLAW_INSTALL_WORKER_IMAGE        Override worker image  (e.g., local build)
-#   HICLAW_INSTALL_COPAW_WORKER_IMAGE  Override copaw worker image (e.g., local build)
+#   HICLAW_INSTALL_WORKER_IMAGE          Override worker image  (e.g., local build)
+#   HICLAW_INSTALL_COPAW_WORKER_IMAGE    Override copaw worker image (e.g., local build)
+#   HICLAW_INSTALL_FASTCLAW_WORKER_IMAGE Override fastclaw worker image (e.g., local build)
+#   HICLAW_INSTALL_ZEROCLAW_WORKER_IMAGE Override zeroclaw worker image (e.g., local build)
+#   HICLAW_INSTALL_NANOCLAW_WORKER_IMAGE Override nanoclaw worker image (e.g., local build)
 #   HICLAW_NACOS_REGISTRY_URI          Default Nacos registry URI for Worker market search/import
 #                                      (default: nacos://market.hiclaw.io:80/public)
 #   HICLAW_NACOS_USERNAME              Default Nacos username for nacos:// package imports (optional)
@@ -516,8 +519,14 @@ msg() {
         "worker_runtime.openclaw.en") text="OpenClaw (Node.js container, ~500MB RAM)" ;;
         "worker_runtime.copaw.zh") text="CoPaw（Python 容器，~150MB 内存，默认关闭控制台，可跟 Manager 对话按需开启）" ;;
         "worker_runtime.copaw.en") text="CoPaw (Python container, ~150MB RAM, console off by default, enable on demand via Manager)" ;;
-        "worker_runtime.choice.zh") text="请选择 [1/2]" ;;
-        "worker_runtime.choice.en") text="Enter choice [1/2]" ;;
+        "worker_runtime.fastclaw.zh") text="FastClaw（Rust 容器，~50MB 内存，极速启动）" ;;
+        "worker_runtime.fastclaw.en") text="FastClaw (Rust container, ~50MB RAM, ultra-fast startup)" ;;
+        "worker_runtime.zeroclaw.zh") text="ZeroClaw（WebAssembly 容器，~10MB 内存，最小占用）" ;;
+        "worker_runtime.zeroclaw.en") text="ZeroClaw (WebAssembly container, ~10MB RAM, minimal footprint)" ;;
+        "worker_runtime.nanoclaw.zh") text="NanoClaw（Alpine 容器，~30MB 内存，轻量通用）" ;;
+        "worker_runtime.nanoclaw.en") text="NanoClaw (Alpine container, ~30MB RAM, lightweight general-purpose)" ;;
+        "worker_runtime.choice.zh") text="请选择 [1/2/3/4/5]" ;;
+        "worker_runtime.choice.en") text="Enter choice [1/2/3/4/5]" ;;
         "worker_runtime.selected.zh") text="默认 Worker 运行时: %s" ;;
         "worker_runtime.selected.en") text="Default Worker runtime: %s" ;;
         "worker_runtime.title_short.zh") text="默认 Worker 运行时" ;;
@@ -886,6 +895,9 @@ MANAGER_IMAGE="${HICLAW_INSTALL_MANAGER_IMAGE:-}"
 MANAGER_COPAW_IMAGE="${HICLAW_INSTALL_MANAGER_COPAW_IMAGE:-}"
 WORKER_IMAGE="${HICLAW_INSTALL_WORKER_IMAGE:-}"
 COPAW_WORKER_IMAGE="${HICLAW_INSTALL_COPAW_WORKER_IMAGE:-}"
+FASTCLAW_WORKER_IMAGE="${HICLAW_INSTALL_FASTCLAW_WORKER_IMAGE:-}"
+ZEROCLAW_WORKER_IMAGE="${HICLAW_INSTALL_ZEROCLAW_WORKER_IMAGE:-}"
+NANOCLAW_WORKER_IMAGE="${HICLAW_INSTALL_NANOCLAW_WORKER_IMAGE:-}"
 DOCKER_PROXY_IMAGE="${HICLAW_INSTALL_DOCKER_PROXY_IMAGE:-}"
 
 resolve_image_tags() {
@@ -893,6 +905,9 @@ resolve_image_tags() {
     MANAGER_COPAW_IMAGE="${HICLAW_INSTALL_MANAGER_COPAW_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-manager-copaw:${HICLAW_VERSION}}"
     WORKER_IMAGE="${HICLAW_INSTALL_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-worker:${HICLAW_VERSION}}"
     COPAW_WORKER_IMAGE="${HICLAW_INSTALL_COPAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-copaw-worker:${HICLAW_VERSION}}"
+    FASTCLAW_WORKER_IMAGE="${HICLAW_INSTALL_FASTCLAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-fastclaw-worker:${HICLAW_VERSION}}"
+    ZEROCLAW_WORKER_IMAGE="${HICLAW_INSTALL_ZEROCLAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-zeroclaw-worker:${HICLAW_VERSION}}"
+    NANOCLAW_WORKER_IMAGE="${HICLAW_INSTALL_NANOCLAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-nanoclaw-worker:${HICLAW_VERSION}}"
     # docker-proxy: prefer versioned tag, fall back to :latest at pull time
     # via resolve_docker_proxy_image().
     DOCKER_PROXY_IMAGE="${HICLAW_INSTALL_DOCKER_PROXY_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-docker-proxy:${HICLAW_VERSION}}"
@@ -1861,6 +1876,9 @@ step_runtime() {
     echo ""
     echo "  1) $(msg worker_runtime.openclaw)"
     echo "  2) $(msg worker_runtime.copaw)"
+    echo "  3) $(msg worker_runtime.fastclaw)"
+    echo "  4) $(msg worker_runtime.zeroclaw)"
+    echo "  5) $(msg worker_runtime.nanoclaw)"
     echo ""
     if [ "${HICLAW_NON_INTERACTIVE}" = "1" ]; then
         HICLAW_DEFAULT_WORKER_RUNTIME="${HICLAW_DEFAULT_WORKER_RUNTIME:-openclaw}"
@@ -1872,6 +1890,9 @@ step_runtime() {
         if [ -n "${_runtime_choice}" ]; then
             case "${_runtime_choice}" in
                 2) HICLAW_DEFAULT_WORKER_RUNTIME="copaw" ;;
+                3) HICLAW_DEFAULT_WORKER_RUNTIME="fastclaw" ;;
+                4) HICLAW_DEFAULT_WORKER_RUNTIME="zeroclaw" ;;
+                5) HICLAW_DEFAULT_WORKER_RUNTIME="nanoclaw" ;;
                 *) HICLAW_DEFAULT_WORKER_RUNTIME="openclaw" ;;
             esac
         fi
@@ -1882,6 +1903,9 @@ step_runtime() {
         _runtime_choice="${_runtime_choice:-1}"
         case "${_runtime_choice}" in
             2) HICLAW_DEFAULT_WORKER_RUNTIME="copaw" ;;
+            3) HICLAW_DEFAULT_WORKER_RUNTIME="fastclaw" ;;
+            4) HICLAW_DEFAULT_WORKER_RUNTIME="zeroclaw" ;;
+            5) HICLAW_DEFAULT_WORKER_RUNTIME="nanoclaw" ;;
             *) HICLAW_DEFAULT_WORKER_RUNTIME="openclaw" ;;
         esac
     fi
@@ -2265,8 +2289,11 @@ HICLAW_CMS_METRICS_ENABLED=${HICLAW_CMS_METRICS_ENABLED:-false}
 # Worker images (for direct container creation)
 HICLAW_WORKER_IMAGE=${WORKER_IMAGE}
 HICLAW_COPAW_WORKER_IMAGE=${COPAW_WORKER_IMAGE}
+HICLAW_FASTCLAW_WORKER_IMAGE=${FASTCLAW_WORKER_IMAGE}
+HICLAW_ZEROCLAW_WORKER_IMAGE=${ZEROCLAW_WORKER_IMAGE}
+HICLAW_NANOCLAW_WORKER_IMAGE=${NANOCLAW_WORKER_IMAGE}
 
-# Default Worker runtime (openclaw | copaw)
+# Default Worker runtime (openclaw | copaw | fastclaw | zeroclaw | nanoclaw)
 HICLAW_DEFAULT_WORKER_RUNTIME=${HICLAW_DEFAULT_WORKER_RUNTIME:-openclaw}
 
 # Matrix E2EE (0=disabled, 1=enabled; default: 0)
@@ -2378,11 +2405,13 @@ EOF
     fi
 
     # Pull worker image for the selected runtime
-    if [ "${HICLAW_DEFAULT_WORKER_RUNTIME}" = "copaw" ]; then
-        _pull_image "${COPAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
-    else
-        _pull_image "${WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
-    fi
+    case "${HICLAW_DEFAULT_WORKER_RUNTIME}" in
+        copaw)     _pull_image "${COPAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker" ;;
+        fastclaw)  _pull_image "${FASTCLAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker" ;;
+        zeroclaw)  _pull_image "${ZEROCLAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker" ;;
+        nanoclaw)  _pull_image "${NANOCLAW_WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker" ;;
+        *)         _pull_image "${WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker" ;;
+    esac
 
     # Always pull copaw worker image — team workers require copaw runtime
     if [ "${HICLAW_DEFAULT_WORKER_RUNTIME}" != "copaw" ]; then
@@ -2394,15 +2423,22 @@ EOF
         fi
     fi
 
-    # During upgrade, also pull the other worker image if containers using it exist locally.
+    # During upgrade, also pull the other worker images if containers using them exist locally.
     # This ensures ALL worker containers get updated, not just the ones matching the selected runtime.
     if [ "${HICLAW_UPGRADE:-0}" = "1" ]; then
-        if [ "${HICLAW_DEFAULT_WORKER_RUNTIME}" = "copaw" ]; then
-            # Selected copaw, check if any openclaw worker image exists locally
-            if ${DOCKER_CMD} image inspect "${WORKER_IMAGE}" >/dev/null 2>&1; then
-                _pull_image "${WORKER_IMAGE}" "install.image.worker_exists" "install.image.pulling_worker"
+        local _alt_images=()
+        case "${HICLAW_DEFAULT_WORKER_RUNTIME}" in
+            copaw)     _alt_images=("${WORKER_IMAGE}") ;;
+            fastclaw)  _alt_images=("${WORKER_IMAGE}" "${COPAW_WORKER_IMAGE}") ;;
+            zeroclaw)  _alt_images=("${WORKER_IMAGE}" "${COPAW_WORKER_IMAGE}" "${FASTCLAW_WORKER_IMAGE}") ;;
+            nanoclaw)  _alt_images=("${WORKER_IMAGE}" "${COPAW_WORKER_IMAGE}" "${FASTCLAW_WORKER_IMAGE}" "${ZEROCLAW_WORKER_IMAGE}") ;;
+            *)         _alt_images=("${COPAW_WORKER_IMAGE}" "${FASTCLAW_WORKER_IMAGE}" "${ZEROCLAW_WORKER_IMAGE}" "${NANOCLAW_WORKER_IMAGE}") ;;
+        esac
+        for _alt_img in "${_alt_images[@]}"; do
+            if ${DOCKER_CMD} image inspect "${_alt_img}" >/dev/null 2>&1; then
+                _pull_image "${_alt_img}" "install.image.worker_exists" "install.image.pulling_worker"
             fi
-        fi
+        done
     fi
 
     # Resolve and pull docker-proxy image (probes versioned tag, falls back to latest)
@@ -2590,6 +2626,7 @@ install_worker() {
     local FS_SECRET=""
     local RESET=false
     local SKILLS_API_URL=""
+    local WORKER_RUNTIME="${HICLAW_DEFAULT_WORKER_RUNTIME:-openclaw}"
 
     # Parse arguments
     while [ $# -gt 0 ]; do
@@ -2599,6 +2636,7 @@ install_worker() {
             --fs-key)     FS_KEY="$2"; shift 2 ;;
             --fs-secret)  FS_SECRET="$2"; shift 2 ;;
             --skills-api-url) SKILLS_API_URL="$2"; shift 2 ;;
+            --runtime)    WORKER_RUNTIME="$2"; shift 2 ;;
             --reset)      RESET=true; shift ;;
             *)            error "$(msg error.unknown_option "$1")" ;;
         esac
@@ -2656,12 +2694,22 @@ install_worker() {
         DOCKER_ENV="${DOCKER_ENV} -e HICLAW_NACOS_TOKEN=${HICLAW_NACOS_TOKEN}"
     fi
 
+    # Resolve worker image based on runtime
+    local SELECTED_WORKER_IMAGE="${WORKER_IMAGE}"
+    case "${WORKER_RUNTIME}" in
+        copaw)     SELECTED_WORKER_IMAGE="${COPAW_WORKER_IMAGE:-${HICLAW_INSTALL_COPAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-copaw-worker:${HICLAW_VERSION:-latest}}}" ;;
+        fastclaw)  SELECTED_WORKER_IMAGE="${FASTCLAW_WORKER_IMAGE:-${HICLAW_INSTALL_FASTCLAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-fastclaw-worker:${HICLAW_VERSION:-latest}}}" ;;
+        zeroclaw)  SELECTED_WORKER_IMAGE="${ZEROCLAW_WORKER_IMAGE:-${HICLAW_INSTALL_ZEROCLAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-zeroclaw-worker:${HICLAW_VERSION:-latest}}}" ;;
+        nanoclaw)  SELECTED_WORKER_IMAGE="${NANOCLAW_WORKER_IMAGE:-${HICLAW_INSTALL_NANOCLAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-nanoclaw-worker:${HICLAW_VERSION:-latest}}}" ;;
+        *)         SELECTED_WORKER_IMAGE="${WORKER_IMAGE}" ;;
+    esac
+
     # shellcheck disable=SC2086
     ${DOCKER_CMD} run -d \
         --name "${CONTAINER_NAME}" \
         ${DOCKER_ENV} \
         --restart unless-stopped \
-        "${WORKER_IMAGE}"
+        "${SELECTED_WORKER_IMAGE}"
 
     log ""
     log "$(msg worker.started "${WORKER_NAME}")"
@@ -2802,6 +2850,7 @@ case "${1:-}" in
         echo "  --fs <url>           MinIO endpoint URL (required)"
         echo "  --fs-key <key>       MinIO access key (required)"
         echo "  --fs-secret <secret> MinIO secret key (required)"
+        echo "  --runtime <runtime>  Worker runtime (openclaw|copaw|fastclaw|zeroclaw|nanoclaw, default: openclaw)"
         echo "  --reset              Remove existing Worker container before creating"
         exit 1
         ;;

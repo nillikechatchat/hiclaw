@@ -29,32 +29,41 @@ log() {
 log "Step 1: Upgrading Manager workspace .md files..."
 
 update_builtin_section "${WORKSPACE}/SOUL.md" "${AGENT_SRC}/SOUL.md"
-# Use runtime-specific HEARTBEAT.md for CoPaw
-if [ "${MANAGER_RUNTIME}" = "copaw" ] && [ -f "${AGENT_SRC}/copaw-manager-agent/HEARTBEAT.md" ]; then
-    update_builtin_section "${WORKSPACE}/HEARTBEAT.md" "${AGENT_SRC}/copaw-manager-agent/HEARTBEAT.md"
+_runtime_manager_dir() {
+    case "${MANAGER_RUNTIME}" in
+        copaw)     echo "copaw-manager-agent" ;;
+        fastclaw)  echo "fastclaw-manager-agent" ;;
+        zeroclaw)  echo "zeroclaw-manager-agent" ;;
+        nanoclaw)  echo "nanoclaw-manager-agent" ;;
+        *)         echo "" ;;
+    esac
+}
+
+_MANAGER_DIR=$(_runtime_manager_dir)
+if [ -n "${_MANAGER_DIR}" ] && [ -f "${AGENT_SRC}/${_MANAGER_DIR}/HEARTBEAT.md" ]; then
+    update_builtin_section "${WORKSPACE}/HEARTBEAT.md" "${AGENT_SRC}/${_MANAGER_DIR}/HEARTBEAT.md"
 else
     update_builtin_section "${WORKSPACE}/HEARTBEAT.md" "${AGENT_SRC}/HEARTBEAT.md"
 fi
-# Use runtime-specific AGENTS.md for CoPaw
-if [ "${MANAGER_RUNTIME}" = "copaw" ] && [ -f "${AGENT_SRC}/copaw-manager-agent/AGENTS.md" ]; then
-    update_builtin_section "${WORKSPACE}/AGENTS.md" "${AGENT_SRC}/copaw-manager-agent/AGENTS.md"
+if [ -n "${_MANAGER_DIR}" ] && [ -f "${AGENT_SRC}/${_MANAGER_DIR}/AGENTS.md" ]; then
+    update_builtin_section "${WORKSPACE}/AGENTS.md" "${AGENT_SRC}/${_MANAGER_DIR}/AGENTS.md"
 else
     update_builtin_section "${WORKSPACE}/AGENTS.md" "${AGENT_SRC}/AGENTS.md"
 fi
 update_builtin_section "${WORKSPACE}/TOOLS.md" "${AGENT_SRC}/TOOLS.md"
 
-# SKILL.md upgrade strategy depends on runtime:
-#   - CoPaw: direct copy (YAML front matter must be at byte 0; markers would break parsing)
-#   - OpenClaw: marker-based merge (preserves user content after builtin-end marker)
 _upgrade_skill_md() {
     local src="$1" dst="$2"
     [ -f "${src}" ] || return 0
     mkdir -p "$(dirname "${dst}")"
-    if [ "${MANAGER_RUNTIME}" = "copaw" ]; then
-        cp "${src}" "${dst}"
-    else
-        update_builtin_section "${dst}" "${src}"
-    fi
+    case "${MANAGER_RUNTIME}" in
+        copaw|fastclaw|zeroclaw|nanoclaw)
+            cp "${src}" "${dst}"
+            ;;
+        *)
+            update_builtin_section "${dst}" "${src}"
+            ;;
+    esac
 }
 
 for skill_dir in "${AGENT_SRC}/skills"/*/; do
@@ -120,28 +129,37 @@ fi
 # ============================================================
 log "Step 3: Publishing Worker builtins to MinIO..."
 
-WORKER_AGENT_SRC="${AGENT_SRC}/worker-agent"
-
-if [ -d "${WORKER_AGENT_SRC}" ] && mc alias ls hiclaw > /dev/null 2>&1; then
+if mc alias ls hiclaw > /dev/null 2>&1; then
     ensure_mc_credentials 2>/dev/null || true
-    # Publish AGENTS.md (pure builtin content without markers, for comparison)
-    # We publish the marker-wrapped version so Workers can update their copy directly
-    mc cp "${WORKER_AGENT_SRC}/AGENTS.md" \
-        "${HICLAW_STORAGE_PREFIX}/shared/builtins/worker/AGENTS.md" 2>/dev/null \
-        && log "  Published: shared/builtins/worker/AGENTS.md" \
-        || log "  WARNING: Failed to publish AGENTS.md to MinIO (MinIO may not be ready yet)"
 
-    # Publish all builtin skills from worker-agent/skills/
-    if [ -d "${WORKER_AGENT_SRC}/skills" ]; then
-        for _skill_dir in "${WORKER_AGENT_SRC}/skills"/*/; do
-            [ ! -d "${_skill_dir}" ] && continue
-            _skill_name=$(basename "${_skill_dir}")
-            mc mirror "${_skill_dir}" \
-                "${HICLAW_STORAGE_PREFIX}/shared/builtins/worker/skills/${_skill_name}/" --overwrite 2>/dev/null \
-                && log "  Published: shared/builtins/worker/skills/${_skill_name}/" \
-                || log "  WARNING: Failed to publish builtin skill ${_skill_name} to MinIO"
-        done
-    fi
+    _publish_worker_runtime() {
+        local runtime_name="$1"
+        local worker_agent_src="${AGENT_SRC}/${runtime_name}"
+
+        [ -d "${worker_agent_src}" ] || return 0
+
+        if [ -f "${worker_agent_src}/AGENTS.md" ]; then
+            mc cp "${worker_agent_src}/AGENTS.md" \
+                "${HICLAW_STORAGE_PREFIX}/shared/builtins/worker/${runtime_name}/AGENTS.md" 2>/dev/null \
+                && log "  Published: shared/builtins/worker/${runtime_name}/AGENTS.md" \
+                || log "  WARNING: Failed to publish ${runtime_name} AGENTS.md to MinIO (MinIO may not be ready yet)"
+        fi
+
+        if [ -d "${worker_agent_src}/skills" ]; then
+            for _skill_dir in "${worker_agent_src}/skills"/*/; do
+                [ ! -d "${_skill_dir}" ] && continue
+                _skill_name=$(basename "${_skill_dir}")
+                mc mirror "${_skill_dir}" \
+                    "${HICLAW_STORAGE_PREFIX}/shared/builtins/worker/${runtime_name}/skills/${_skill_name}/" --overwrite 2>/dev/null \
+                    && log "  Published: shared/builtins/worker/${runtime_name}/skills/${_skill_name}/" \
+                    || log "  WARNING: Failed to publish builtin skill ${runtime_name}/${_skill_name} to MinIO"
+            done
+        fi
+    }
+
+    for _runtime in worker-agent copaw-worker-agent fastclaw-worker-agent zeroclaw-worker-agent nanoclaw-worker-agent; do
+        _publish_worker_runtime "${_runtime}"
+    done
 
     # Publish all worker-skills directories to builtins so Workers can refresh assigned skills
     for _skill_dir in "${AGENT_SRC}/worker-skills"/*/; do
@@ -152,7 +170,7 @@ if [ -d "${WORKER_AGENT_SRC}" ] && mc alias ls hiclaw > /dev/null 2>&1; then
             || log "  WARNING: Failed to publish worker-skill ${_skill_name} to MinIO"
     done
 else
-    log "  Skipping MinIO publish (worker-agent dir not found or mc not configured)"
+    log "  Skipping MinIO publish (mc not configured)"
 fi
 
 # ============================================================
@@ -162,7 +180,7 @@ fi
 # ============================================================
 log "Step 4: Syncing builtins to registered workers' workspaces..."
 
-if [ -d "${WORKER_AGENT_SRC}" ] && mc alias ls hiclaw > /dev/null 2>&1; then
+if [ -d "${AGENT_SRC}/worker-agent" ] && mc alias ls hiclaw > /dev/null 2>&1; then
     ensure_mc_credentials 2>/dev/null || true
     # Get list of registered workers
     REGISTERED_WORKERS=""
@@ -180,10 +198,14 @@ if [ -d "${WORKER_AGENT_SRC}" ] && mc alias ls hiclaw > /dev/null 2>&1; then
             _worker_runtime=$(jq -r --arg w "${_worker_name}" '.workers[$w].runtime // "openclaw"' "${REGISTRY}" 2>/dev/null || echo "openclaw")
             if [ "${_worker_role}" = "team_leader" ] && [ -d "${AGENT_SRC}/team-leader-agent" ]; then
                 _worker_agent_src="${AGENT_SRC}/team-leader-agent"
-            elif [ "${_worker_runtime}" = "copaw" ]; then
-                _worker_agent_src="${AGENT_SRC}/copaw-worker-agent"
             else
-                _worker_agent_src="${WORKER_AGENT_SRC}"
+                case "${_worker_runtime}" in
+                    copaw)    _worker_agent_src="${AGENT_SRC}/copaw-worker-agent" ;;
+                    fastclaw) _worker_agent_src="${AGENT_SRC}/fastclaw-worker-agent" ;;
+                    zeroclaw) _worker_agent_src="${AGENT_SRC}/zeroclaw-worker-agent" ;;
+                    nanoclaw) _worker_agent_src="${AGENT_SRC}/nanoclaw-worker-agent" ;;
+                    *)        _worker_agent_src="${AGENT_SRC}/worker-agent" ;;
+                esac
             fi
 
             # Merge AGENTS.md (preserve user content after builtin-end marker)

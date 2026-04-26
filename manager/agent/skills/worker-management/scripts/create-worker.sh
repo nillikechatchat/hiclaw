@@ -40,7 +40,7 @@ MCP_SERVERS=""
 WORKER_SKILLS=""
 REMOTE_MODE=false
 SKILLS_API_URL=""
-WORKER_RUNTIME="${HICLAW_DEFAULT_WORKER_RUNTIME:-openclaw}"   # openclaw | copaw
+WORKER_RUNTIME="${HICLAW_DEFAULT_WORKER_RUNTIME:-openclaw}"   # openclaw | copaw | fastclaw | zeroclaw | nanoclaw | openfang
 CONSOLE_PORT=""             # copaw only: web console port (e.g. 8088)
 CUSTOM_IMAGE=""             # optional: custom Docker image for this worker
 WORKER_ROLE="worker"        # worker | team_leader
@@ -74,7 +74,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "${WORKER_NAME}" ]; then
-    echo "Usage: create-worker.sh --name <NAME> [--model <MODEL_ID>] [--image <IMAGE>] [--mcp-servers s1,s2] [--skills s1,s2] [--skills-api-url <URL>] [--remote] [--runtime openclaw|copaw] [--console-port <PORT>] [--role worker|team_leader] [--team <TEAM>] [--team-leader <LEADER>]"
+    echo "Usage: create-worker.sh --name <NAME> [--model <MODEL_ID>] [--image <IMAGE>] [--mcp-servers s1,s2] [--skills s1,s2] [--skills-api-url <URL>] [--remote] [--runtime openclaw|copaw|fastclaw|zeroclaw|nanoclaw|openfang] [--console-port <PORT>] [--role worker|team_leader] [--team <TEAM>] [--team-leader <LEADER>]"
     exit 1
 fi
 
@@ -601,11 +601,17 @@ rm -f "${_tmp_pw}"
 log "  MinIO sync verified"
 
 # Push Worker agent files from Manager image (AGENTS.md + default skills)
-# Use runtime-specific skills for copaw workers, team-leader skills for leaders
+# Use runtime-specific skills for each runtime type
 if [ "${WORKER_ROLE}" = "team_leader" ] && [ -d "/opt/hiclaw/agent/team-leader-agent" ]; then
     WORKER_AGENT_SRC="/opt/hiclaw/agent/team-leader-agent"
 elif [ "${WORKER_RUNTIME}" = "copaw" ]; then
     WORKER_AGENT_SRC="/opt/hiclaw/agent/copaw-worker-agent"
+elif [ "${WORKER_RUNTIME}" = "fastclaw" ]; then
+    WORKER_AGENT_SRC="/opt/hiclaw/agent/fastclaw-worker-agent"
+elif [ "${WORKER_RUNTIME}" = "zeroclaw" ]; then
+    WORKER_AGENT_SRC="/opt/hiclaw/agent/zeroclaw-worker-agent"
+elif [ "${WORKER_RUNTIME}" = "nanoclaw" ]; then
+    WORKER_AGENT_SRC="/opt/hiclaw/agent/nanoclaw-worker-agent"
 else
     WORKER_AGENT_SRC="/opt/hiclaw/agent/worker-agent"
 fi
@@ -903,6 +909,21 @@ elif [ "${HICLAW_RUNTIME}" = "aliyun" ]; then
         if [ -z "${SAE_IMAGE}" ]; then
             _fail "HICLAW_SAE_COPAW_WORKER_IMAGE not set (required for copaw runtime on cloud)"
         fi
+    elif [ "${WORKER_RUNTIME}" = "fastclaw" ]; then
+        SAE_IMAGE="${HICLAW_SAE_FASTCLAW_WORKER_IMAGE:-}"
+        if [ -z "${SAE_IMAGE}" ]; then
+            _fail "HICLAW_SAE_FASTCLAW_WORKER_IMAGE not set (required for fastclaw runtime on cloud)"
+        fi
+    elif [ "${WORKER_RUNTIME}" = "zeroclaw" ]; then
+        SAE_IMAGE="${HICLAW_SAE_ZEROCLAW_WORKER_IMAGE:-}"
+        if [ -z "${SAE_IMAGE}" ]; then
+            _fail "HICLAW_SAE_ZEROCLAW_WORKER_IMAGE not set (required for zeroclaw runtime on cloud)"
+        fi
+    elif [ "${WORKER_RUNTIME}" = "nanoclaw" ]; then
+        SAE_IMAGE="${HICLAW_SAE_NANOCLAW_WORKER_IMAGE:-}"
+        if [ -z "${SAE_IMAGE}" ]; then
+            _fail "HICLAW_SAE_NANOCLAW_WORKER_IMAGE not set (required for nanoclaw runtime on cloud)"
+        fi
     fi
 
     # Build complete SAE environment variables (Worker needs these to connect)
@@ -929,6 +950,8 @@ elif [ "${HICLAW_RUNTIME}" = "aliyun" ]; then
         | if $runtime == "copaw" then
             . + { "HICLAW_RUNTIME": "aliyun" }
             | if $console_port != "" then . + { "HICLAW_CONSOLE_PORT": $console_port } else . end
+          elif $runtime == "fastclaw" or $runtime == "zeroclaw" or $runtime == "nanoclaw" then
+            . + { "HICLAW_RUNTIME": "aliyun", "HICLAW_WORKER_NAME": $worker_name }
           else
             . + {
                 "OPENCLAW_DISABLE_BONJOUR": "1",
@@ -955,6 +978,12 @@ elif container_api_available; then
 
     if [ "${WORKER_RUNTIME}" = "copaw" ]; then
         CREATE_OUTPUT=$(container_create_copaw_worker "${WORKER_NAME}" "${WORKER_NAME}" "${WORKER_MINIO_PASSWORD}" "${EXTRA_ENV_JSON}" "${CUSTOM_IMAGE}" 2>&1) || true
+    elif [ "${WORKER_RUNTIME}" = "fastclaw" ]; then
+        CREATE_OUTPUT=$(container_create_fastclaw_worker "${WORKER_NAME}" "${WORKER_NAME}" "${WORKER_MINIO_PASSWORD}" "${EXTRA_ENV_JSON}" "${CUSTOM_IMAGE}" 2>&1) || true
+    elif [ "${WORKER_RUNTIME}" = "zeroclaw" ]; then
+        CREATE_OUTPUT=$(container_create_zeroclaw_worker "${WORKER_NAME}" "${WORKER_NAME}" "${WORKER_MINIO_PASSWORD}" "${EXTRA_ENV_JSON}" "${CUSTOM_IMAGE}" 2>&1) || true
+    elif [ "${WORKER_RUNTIME}" = "nanoclaw" ]; then
+        CREATE_OUTPUT=$(container_create_nanoclaw_worker "${WORKER_NAME}" "${WORKER_NAME}" "${WORKER_MINIO_PASSWORD}" "${EXTRA_ENV_JSON}" "${CUSTOM_IMAGE}" 2>&1) || true
     else
         CREATE_OUTPUT=$(container_create_worker "${WORKER_NAME}" "${WORKER_NAME}" "${WORKER_MINIO_PASSWORD}" "${EXTRA_ENV_JSON}" "${CUSTOM_IMAGE}" 2>&1) || true
     fi
@@ -974,6 +1003,14 @@ elif container_api_available; then
             else
                 WORKER_STATUS="starting"
                 log "  WARNING: CoPaw Worker agent not ready within timeout (container may still be initializing)"
+            fi
+        elif [ "${WORKER_RUNTIME}" = "fastclaw" ] || [ "${WORKER_RUNTIME}" = "zeroclaw" ] || [ "${WORKER_RUNTIME}" = "nanoclaw" ]; then
+            if container_wait_generic_worker_ready "${WORKER_NAME}" 120; then
+                WORKER_STATUS="ready"
+                log "  Worker agent is ready!"
+            else
+                WORKER_STATUS="starting"
+                log "  WARNING: Worker agent not ready within timeout (container may still be initializing)"
             fi
         else
             if container_wait_worker_ready "${WORKER_NAME}" 120; then
